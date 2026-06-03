@@ -1,0 +1,10 @@
+pi:
+  executable: pi
+  args: []
+privacy:
+  store_screenshots: false
+  store_conversations: false
+  redact_secrets_best_effort: true
+  debug_mode: false
+ui:
+  mouse_move_debug_teleport: false

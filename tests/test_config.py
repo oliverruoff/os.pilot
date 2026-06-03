@@ -1,0 +1,25 @@
+from pathlib import Path
+
+from ospilot.config import load_config, pi_environment
+
+
+def test_load_config_merges_pi_args_from_env(tmp_path: Path, monkeypatch) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("pi:\n  executable: custom-pi\n  args: ['--foo']\n")
+    monkeypatch.setenv("PI_ARGS", "--model kimi-coding/test")
+
+    config = load_config(config_file)
+
+    assert config.pi.executable == "custom-pi"
+    assert config.pi.args == ["--foo", "--model", "kimi-coding/test"]
+
+
+def test_pi_environment_sets_session_dir(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("")
+    config = load_config(config_file)
+
+    env = pi_environment(config, {"EXTRA": "1"})
+
+    assert env["PI_CODING_AGENT_SESSION_DIR"].endswith("OSPilot/pi-sessions")
+    assert env["EXTRA"] == "1"
