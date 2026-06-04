@@ -26,6 +26,8 @@ class UiDispatch(QObject):
     error = Signal(str)
     ready = Signal(str)
     local_tool = Signal(str, str)
+    companion_message = Signal(str)
+    overlay_visibility = Signal(bool, object)
 
 
 class OSPilotApp:
@@ -51,9 +53,11 @@ class OSPilotApp:
         self._watchdog.timeout.connect(self._handle_prompt_timeout)
 
         self.companion = CompanionBubble()
+        self.ui_dispatch.companion_message.connect(self.companion.show_output)
+        self.ui_dispatch.overlay_visibility.connect(self._apply_overlay_visibility)
         self.halo = CursorHalo()
         self.mouse = MouseController()
-        self.registry = build_default_registry(self.config, self.mouse, self.companion.show_output, self._emit_local_tool_state)
+        self.registry = build_default_registry(self.config, self.mouse, self._emit_companion_message, self._emit_local_tool_state, self._set_screenshot_overlay_visibility)
         self.ipc = IpcServer(self.registry)
         self.runtime = PiRuntime(self.config)
         self.runtime.rpc.add_event_handler(self._on_pi_event)
@@ -184,6 +188,25 @@ class OSPilotApp:
 
     def _emit_local_tool_state(self, name: str, state: str) -> None:
         self.ui_dispatch.local_tool.emit(name, state)
+
+    def _emit_companion_message(self, text: str) -> None:
+        self.ui_dispatch.companion_message.emit(text)
+
+    def _set_screenshot_overlay_visibility(self, visible: bool) -> None:
+        done = threading.Event()
+        self.ui_dispatch.overlay_visibility.emit(visible, done)
+        done.wait(1.0)
+
+    def _apply_overlay_visibility(self, visible: bool, done) -> None:
+        try:
+            if visible:
+                if self._active_prompt:
+                    self.companion.show_status("Looking at your screen...", CompanionState.TOOL_RUNNING, "screenshot")
+            else:
+                self.halo.hide_halo()
+                self.companion.hide()
+        finally:
+            done.set()
 
     def _apply_local_tool_state(self, name: str, state: str) -> None:
         if name == "ospilot_move_mouse":

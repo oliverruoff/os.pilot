@@ -103,6 +103,7 @@ class CompanionBubble(QFrame):
         self._countdown_timer.timeout.connect(self._tick_countdown)
         self._countdown_started = 0.0
         self._countdown_seconds = 0.0
+        self._expanded_output = False
 
     def show_chat(self, on_submit) -> None:
         self.cancel_countdown()
@@ -159,20 +160,21 @@ class CompanionBubble(QFrame):
         self.input.setVisible(False)
         self._show_near_cursor()
 
-    def show_output(self, text: str) -> None:
+    def show_output(self, text: str, expanded: bool = False) -> None:
         self.cancel_countdown()
         self.setMinimumHeight(72)
         self.state = CompanionState.OUTPUT
+        self._expanded_output = expanded
         self.main_layout.setContentsMargins(12, 8, 30, 8)
         self.header.hide()
         self.label.hide()
         self._set_output_markdown(text)
         self.output_frame.show()
         self.input.setVisible(False)
-        self._show_near_cursor(width=420)
+        self._show_near_cursor(width=self._output_width(expanded))
 
     def show_final_output(self, text: str) -> None:
-        self.show_output(text)
+        self.show_output(text, expanded=True)
         self.start_countdown(text)
 
     def reset(self) -> None:
@@ -182,6 +184,7 @@ class CompanionBubble(QFrame):
         self.output.clear()
         self.label.setMaximumHeight(16777215)
         self.status_label.setText("")
+        self._expanded_output = False
         self.header.show()
         self.label.show()
         self.main_layout.setContentsMargins(16, 12, 16, 12)
@@ -258,17 +261,36 @@ class CompanionBubble(QFrame):
         except AttributeError:
             self.output.setPlainText(text)
 
+    def _output_width(self, expanded: bool) -> int:
+        if not expanded:
+            return 420
+        cursor = QCursor.pos()
+        screen = QApplication.screenAt(cursor) or QApplication.primaryScreen()
+        bounds = screen.availableGeometry() if screen else QApplication.primaryScreen().availableGeometry()
+        return max(420, min(720, bounds.width() - 96))
+
     def _fit_output_to_text(self, width: int) -> None:
         frame_padding = 18
         text_width = max(80, width - 28 - frame_padding)
         self.output.document().setTextWidth(text_width)
         document_height = self.output.document().size().height()
         row_height = self.output.fontMetrics().lineSpacing()
-        max_text_height = row_height * 4 + 8
+        if self._expanded_output:
+            cursor = QCursor.pos()
+            screen = QApplication.screenAt(cursor) or QApplication.primaryScreen()
+            bounds = screen.availableGeometry() if screen else QApplication.primaryScreen().availableGeometry()
+            max_text_height = max(row_height * 6, bounds.height() - 160)
+            self.output.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        else:
+            max_text_height = row_height * 4 + 8
+            self.output.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         text_height = max(row_height + 8, min(document_height + 4, max_text_height))
         self.output.setFixedHeight(int(text_height))
         self.output_frame.setFixedHeight(int(text_height))
-        self._scroll_output_to_bottom()
+        if self._expanded_output:
+            QTimer.singleShot(0, lambda: self.output.verticalScrollBar().setValue(0))
+        else:
+            self._scroll_output_to_bottom()
 
     def _scroll_output_to_bottom(self) -> None:
         QTimer.singleShot(0, lambda: self.output.verticalScrollBar().setValue(self.output.verticalScrollBar().maximum()))
