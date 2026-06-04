@@ -124,8 +124,8 @@ class CompanionBubble(QFrame):
         self.output_frame.hide()
         self.input.setPlaceholderText("Ask pi...")
         self.input.setVisible(True)
-        self._show_near_cursor()
-        self.input.setFocus()
+        self._show_near_cursor(accept_keyboard=True)
+        self.input.setFocus(Qt.FocusReason.ShortcutFocusReason)
 
     def show_voice_placeholder(self) -> None:
         self.cancel_countdown()
@@ -214,22 +214,26 @@ class CompanionBubble(QFrame):
         if remaining <= 0:
             self.reset()
 
-    def _show_near_cursor(self, width: int = 380) -> None:
+    def _show_near_cursor(self, width: int = 380, accept_keyboard: bool = False) -> None:
         self.setFixedWidth(width)
         if self.output_frame.isVisible():
             self._fit_output_to_text(width)
         self.adjustSize()
         self._position_countdown_ring()
         target = self._position_near_cursor()
-        allow_fullscreen_overlay(self)
+        allow_fullscreen_overlay(self, nonactivating=not accept_keyboard)
         if not self.isVisible():
             self.move(target)
             self.show()
-            allow_fullscreen_overlay(self)
+            allow_fullscreen_overlay(self, nonactivating=not accept_keyboard)
         if not self._follow_timer.isActive():
             self._follow_timer.start(16)
         self.raise_()
-        order_front(self)
+        if accept_keyboard:
+            order_front(self, make_key=True)
+            self.input.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        else:
+            order_front(self)
 
     def _follow_cursor(self) -> None:
         if not self.isVisible():

@@ -38,7 +38,7 @@ def configure_background_app() -> None:
         return
 
 
-def allow_fullscreen_overlay(widget: Any) -> None:
+def allow_fullscreen_overlay(widget: Any, nonactivating: bool = True) -> None:
     """Make a Qt top-level widget behave like a macOS overlay.
 
     Qt's WindowStaysOnTopHint is not enough on macOS: full-screen apps live in
@@ -77,13 +77,17 @@ def allow_fullscreen_overlay(widget: Any) -> None:
         if hasattr(ns_window, "setHidesOnDeactivate_"):
             ns_window.setHidesOnDeactivate_(False)
 
-        # Prevent AppKit from activating OSPilot and switching Spaces when the
-        # overlay appears over a full-screen app.  PySide creates an NSWindow,
-        # not an NSPanel, but macOS still honors this style bit for avoiding
-        # app activation in practice.
-        nonactivating = getattr(AppKit, "NSWindowStyleMaskNonactivatingPanel", 1 << 7)
+        # Prevent AppKit from activating OSPilot and switching Spaces for
+        # passive overlays. Chat input windows opt out so the QLineEdit can
+        # receive keyboard focus.
+        nonactivating_mask = getattr(AppKit, "NSWindowStyleMaskNonactivatingPanel", 1 << 7)
         if hasattr(ns_window, "styleMask") and hasattr(ns_window, "setStyleMask_"):
-            ns_window.setStyleMask_(ns_window.styleMask() | nonactivating)
+            style = ns_window.styleMask()
+            if nonactivating:
+                style |= nonactivating_mask
+            else:
+                style &= ~nonactivating_mask
+            ns_window.setStyleMask_(style)
     except Exception:
         return
 
