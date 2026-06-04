@@ -7,6 +7,14 @@ from ospilot.config import AppConfig, pi_environment
 from .rpc import PiRpcClient
 
 
+OSPILOT_FAST_TOOL_HINT = """OSPilot visual-grounding hint:
+- When the user asks where a named UI control/setting/button is, or asks to click one, first call ospilot_get_frontmost_ui_elements with a short query. Use the returned exact center coordinates for ospilot_move_mouse or ospilot_click; this is faster and more precise than visual guessing.
+- Only call ospilot_capture_screenshot_current_mouse_monitor when Accessibility cannot identify the target or the target is purely visual. Inspect screenshot metadata, especially mouse_position, monitor_bounds, screenshot_size, and scale_factor.
+- After locating the requested item, choose the exact center of the relevant UI element/icon/label and call ospilot_move_mouse. For screenshot-based targets, prefer normalized coordinates relative to the screenshot/monitor; exact screenshot pixel coordinates from the latest screenshot are also accepted and converted precisely.
+- Do not click for \"where is ...\" / \"show me ...\" requests unless the user explicitly asks to click or open it.
+"""
+
+
 class PiRuntime:
     def __init__(self, config: AppConfig, rpc: PiRpcClient | None = None) -> None:
         self.config = config
@@ -27,7 +35,10 @@ class PiRuntime:
         await self.rpc.stop()
 
     async def prompt(self, text: str, context: dict[str, Any] | None = None) -> Any:
-        return await self.rpc.call("prompt", {"prompt": text, "context": context or {}})
+        return await self.rpc.call("prompt", {"prompt": self._with_fast_tool_hint(text), "context": context or {}})
+
+    def _with_fast_tool_hint(self, text: str) -> str:
+        return f"{OSPILOT_FAST_TOOL_HINT}\nUser request: {text}"
 
     async def abort(self) -> Any:
         await self.rpc.notify("abort", {})

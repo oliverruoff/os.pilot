@@ -26,6 +26,24 @@ def test_new_session_calls_pi_method(tmp_path) -> None:
     assert rpc.calls == [("new_session", {})]
 
 
+def test_prompt_includes_visual_pointing_tool_hint(tmp_path) -> None:
+    from ospilot.config import load_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("")
+    rpc = FakeRpc()
+    runtime = PiRuntime(load_config(config_file), rpc)  # type: ignore[arg-type]
+
+    asyncio.run(runtime.prompt("where is the search button?"))
+
+    method, params = rpc.calls[0]
+    assert method == "prompt"
+    assert "first call ospilot_capture_screenshot_current_mouse_monitor" in params["prompt"]
+    assert "view what the user is currently looking at" in params["prompt"]
+    assert "mouse_position" in params["prompt"]
+    assert "User request: where is the search button?" in params["prompt"]
+
+
 def test_runtime_command_uses_extension_not_skill(tmp_path, monkeypatch) -> None:
     from ospilot.config import load_config
 

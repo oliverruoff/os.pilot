@@ -6,22 +6,29 @@ from PySide6.QtCore import QPointF, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor, QPainter, QRadialGradient
 from PySide6.QtWidgets import QWidget
 
+from .macos_window import allow_fullscreen_overlay
+
 
 class CursorHalo(QWidget):
     def __init__(self) -> None:
         super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.phase = 0.0
         self.mode = "moving"
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._follow_cursor)
         self.resize(88, 88)
+        allow_fullscreen_overlay(self)
 
     def show_halo(self, mode: str = "moving") -> None:
         self.mode = mode
+        allow_fullscreen_overlay(self)
         self._follow_cursor()
         self.show()
+        allow_fullscreen_overlay(self)
         self.timer.start(16)
 
     def hide_halo(self) -> None:

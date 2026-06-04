@@ -8,6 +8,13 @@ from pathlib import Path
 from ospilot.config import AppConfig
 
 
+_LAST_SCREENSHOT_CONTEXT: dict | None = None
+
+
+def get_last_screenshot_context() -> dict | None:
+    return _LAST_SCREENSHOT_CONTEXT
+
+
 def capture_screenshot_current_mouse_monitor(config: AppConfig) -> dict:
     try:
         import Quartz
@@ -22,7 +29,8 @@ def capture_screenshot_current_mouse_monitor(config: AppConfig) -> dict:
 
     target_dir = config.paths.screenshots if config.privacy.store_screenshots else Path(tempfile.gettempdir())
     target_dir.mkdir(parents=True, exist_ok=True)
-    path = target_dir / f"ospilot-screenshot-{int(time.time() * 1000)}.png"
+    path = target_dir / f"ospilot-screenshot-{int(time.time() * 1000)}.jpg"
+    raw_path = target_dir / f"ospilot-screenshot-raw-{int(time.time() * 1000)}.png"
 
     x = int(bounds.origin.x)
     y = int(bounds.origin.y)
@@ -30,7 +38,7 @@ def capture_screenshot_current_mouse_monitor(config: AppConfig) -> dict:
     height = int(bounds.size.height)
 
     result = subprocess.run(
-        ["screencapture", "-x", "-R", f"{x},{y},{width},{height}", str(path)],
+        ["screencapture", "-x", "-R", f"{x},{y},{width},{height}", str(raw_path)],
         capture_output=True,
         text=True,
         timeout=15,
@@ -38,15 +46,35 @@ def capture_screenshot_current_mouse_monitor(config: AppConfig) -> dict:
     if result.returncode != 0:
         return {"ok": False, "tool": "ospilot_capture_screenshot_current_mouse_monitor", "error": result.stderr.strip() or "screencapture failed"}
 
-    return {
+    convert = subprocess.run(
+        ["sips", "-s", "format", "jpeg", "-s", "formatOptions", "65", str(raw_path), "--out", str(path)],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if convert.returncode != 0:
+        path = raw_path
+        mime_type = "image/png"
+    else:
+        try:
+            raw_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        mime_type = "image/jpeg"
+
+    result = {
         "ok": True,
         "tool": "ospilot_capture_screenshot_current_mouse_monitor",
-        "screenshot_path": str(path),
         "mouse_position": {"x": cursor.x, "y": cursor.y},
         "monitor_bounds": {"x": x, "y": y, "width": width, "height": height},
         "screenshot_size": {"width": int(pixels_wide), "height": int(pixels_high)},
+        "screenshot_path": str(path),
+        "screenshot_mime_type": mime_type,
         "scale_factor": float(pixels_wide / width) if width else 1.0,
     }
+    global _LAST_SCREENSHOT_CONTEXT
+    _LAST_SCREENSHOT_CONTEXT = result
+    return result
 
 
 def _display_for_point(Quartz, x: float, y: float):

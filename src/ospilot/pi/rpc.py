@@ -11,6 +11,11 @@ from .events import PiEvent
 
 EventHandler = Callable[[PiEvent], Awaitable[None] | None]
 
+# Screenshot tool results can include base64 image content. pi RPC is newline-delimited
+# JSON, so a single event line may be several MB; the asyncio default reader
+# limit (64 KiB) is too small and makes stdout reading stop mid-turn.
+RPC_STREAM_LIMIT = 64 * 1024 * 1024
+
 
 @dataclass(frozen=True)
 class JsonRpcMessage:
@@ -82,6 +87,7 @@ class PiRpcClient:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
+            limit=RPC_STREAM_LIMIT,
         )
         self._reader_task = asyncio.create_task(self._read_stdout())
         asyncio.create_task(self._read_stderr())
@@ -106,7 +112,7 @@ class PiRpcClient:
         self._process = None
 
     async def call(self, method: str, params: dict[str, Any] | None = None, timeout: float = 30) -> Any:
-        if not self._process or not self._process.stdin:
+        if not self.is_running or not self._process or not self._process.stdin:
             raise RuntimeError("pi RPC process is not running")
         numeric_id = self._next_id
         self._next_id += 1
@@ -122,7 +128,7 @@ class PiRpcClient:
             self._pending.pop(request_id, None)
 
     async def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
-        if not self._process or not self._process.stdin:
+        if not self.is_running or not self._process or not self._process.stdin:
             raise RuntimeError("pi RPC process is not running")
         numeric_id = self._next_id
         self._next_id += 1
@@ -138,18 +144,30 @@ class PiRpcClient:
 
     async def _read_stdout(self) -> None:
         assert self._process and self._process.stdout
-        while line := await self._process.stdout.readline():
-            try:
-                message = json.loads(line.decode())
-            except json.JSONDecodeError:
-                self._logger.warning("invalid pi rpc line")
-                continue
-            await self.route_message(message)
+        try:
+            while line := await self._process.stdout.readline():
+                try:
+                    message = json.loads(line.decode())
+                except json.JSONDecodeError:
+                    self._logger.warning("invalid pi rpc line")
+                    continue
+                await self.route_message(message)
+        except Exception:
+            self._logger.exception("pi stdout reader failed")
+        finally:
+            self._logger.warning("pi stdout reader exited")
+            for future in list(self._pending.values()):
+                if not future.done():
+                    future.set_exception(RuntimeError("pi process closed stdout"))
+            self._pending.clear()
 
     async def _read_stderr(self) -> None:
         assert self._process and self._process.stderr
-        while line := await self._process.stderr.readline():
-            self._logger.info("pi stderr: %s", line.decode(errors="replace").strip())
+        try:
+            while line := await self._process.stderr.readline():
+                self._logger.info("pi stderr: %s", line.decode(errors="replace").strip())
+        finally:
+            self._logger.warning("pi stderr reader exited")
 
     async def route_message(self, message: dict[str, Any]) -> None:
         if message.get("type") == "response":

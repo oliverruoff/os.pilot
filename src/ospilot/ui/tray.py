@@ -1,16 +1,38 @@
 from __future__ import annotations
 
-from pathlib import Path
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QImage, QPainter, QPixmap
+from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
-from PySide6.QtGui import QAction, QIcon
-from PySide6.QtWidgets import QApplication, QMenu, QStyle, QSystemTrayIcon
+
+def _emoji_tray_icon() -> QIcon:
+    size = 64
+    image = QImage(size, size, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    font = QFont("Apple Color Emoji")
+    font.setPixelSize(44)
+    painter.setFont(font)
+    painter.drawText(QRect(0, 4, size, size), Qt.AlignmentFlag.AlignCenter, "🧑🏻‍✈️")
+    painter.end()
+
+    # Convert the emoji to a monochrome template-style icon. macOS can tint mask icons
+    # for light/dark menu bars; other platforms get a crisp black silhouette.
+    for y in range(size):
+        for x in range(size):
+            alpha = QColor(image.pixelColor(x, y)).alpha()
+            if alpha:
+                image.setPixelColor(x, y, QColor(0, 0, 0, alpha))
+
+    icon = QIcon(QPixmap.fromImage(image))
+    icon.setIsMask(True)
+    return icon
 
 
 def _tray_icon() -> QIcon:
-    custom = Path.home() / "Library" / "Application Support" / "OSPilot" / "ospilot_favicon.jpg"
-    if custom.exists():
-        return QIcon(str(custom))
-    return QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+    return _emoji_tray_icon()
 
 
 class TrayController:

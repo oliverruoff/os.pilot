@@ -12,6 +12,7 @@ from .keyboard import press_hotkey, type_text
 from .mouse import MouseController
 from .screenshot import capture_screenshot_current_mouse_monitor
 from .shell import run_shell_command
+from .ui_elements import get_frontmost_ui_elements
 
 
 ToolHandler = Callable[[dict[str, Any]], dict[str, Any]]
@@ -44,6 +45,7 @@ def build_default_registry(
     mouse = mouse or MouseController()
     registry.register("ospilot_get_active_context", lambda payload: get_active_context())
     registry.register("ospilot_capture_screenshot_current_mouse_monitor", lambda payload: capture_screenshot_current_mouse_monitor(config))
+    registry.register("ospilot_get_frontmost_ui_elements", lambda payload: get_frontmost_ui_elements(str(payload.get("query", "")), int(payload.get("limit", 120))))
     registry.register("ospilot_show_companion_message", lambda payload: _show_message(show_message, str(payload.get("text", ""))))
     registry.register("ospilot_move_mouse", lambda payload: _with_tool_state(tool_state, "ospilot_move_mouse", lambda: mouse.move_mouse(payload.get("target", {}), payload.get("duration_ms"))))
     registry.register("ospilot_press_hotkey", lambda payload: press_hotkey(list(payload.get("keys", []))))

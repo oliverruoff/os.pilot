@@ -7,6 +7,8 @@ from PySide6.QtCore import QPoint, QRectF, QTimer, Qt
 from PySide6.QtGui import QColor, QCursor, QPainter, QPen
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLineEdit, QLabel, QTextEdit, QVBoxLayout, QWidget
 
+from .macos_window import allow_fullscreen_overlay, order_front
+
 
 class CompanionState(StrEnum):
     HIDDEN = "hidden"
@@ -42,49 +44,59 @@ class CountdownRing(QWidget):
 
 class CompanionBubble(QFrame):
     def __init__(self) -> None:
-        super().__init__(None, Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setObjectName("companion")
         self.setStyleSheet(
             "#companion { background: transparent; border: 0; }"
-            "#outputFrame { background: #252833; border: 1px solid #4a5060; border-radius: 10px; }"
-            "QLabel { color: white; font-size: 13px; } #statusLabel { color: rgba(255,255,255,175); font-size: 12px; font-weight: 600; }"
-            "QTextEdit { color: white; background: transparent; border: 0; font-size: 13px; }"
-            "QTextEdit::viewport { background: transparent; }"
-            "QLineEdit { color: white; background: #252833; border: 1px solid #4a5060; border-radius: 8px; padding: 8px; font-size: 14px; selection-background-color: #438cff; }"
+            "#outputFrame { background: transparent; border: 0; }"
+            "QLabel { color: rgba(255, 255, 255, 230); font-size: 13px; } #statusLabel { color: rgba(255,255,255,160); font-size: 12px; font-weight: 600; }"
+            "QTextEdit { color: rgba(255, 255, 255, 230); background: transparent; border: none; font-size: 13px; padding: 0; margin: 0; }"
+            "QTextEdit::viewport { background: transparent; border: none; }"
+            "QLineEdit { color: rgba(255, 255, 255, 230); background: rgba(255, 255, 255, 8); border: 1px solid rgba(255, 255, 255, 18); border-radius: 10px; padding: 8px; font-size: 14px; selection-background-color: #438cff; }"
         )
         self.state = CompanionState.HIDDEN
         self.status_label = QLabel("")
         self.status_label.setObjectName("statusLabel")
         self.countdown_ring = CountdownRing()
-        header = QHBoxLayout()
+        self.countdown_ring.setParent(self)
+        self.header = QWidget()
+        header = QHBoxLayout(self.header)
         header.setContentsMargins(0, 0, 0, 0)
         header.addWidget(self.status_label)
         header.addStretch(1)
-        header.addWidget(self.countdown_ring)
         self.label = QLabel("")
         self.label.setWordWrap(True)
         self.output_frame = QFrame()
         self.output_frame.setObjectName("outputFrame")
         output_layout = QVBoxLayout(self.output_frame)
-        output_layout.setContentsMargins(8, 6, 8, 6)
+        output_layout.setContentsMargins(0, 0, 0, 0)
         self.output = QTextEdit()
         self.output.setReadOnly(True)
-        self.output.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.output.setFrameShape(QFrame.Shape.NoFrame)
+        self.output.setFrameShadow(QFrame.Shadow.Plain)
+        self.output.setLineWidth(0)
+        self.output.setMidLineWidth(0)
+        self.output.setViewportMargins(0, 0, 0, 0)
+        self.output.document().setDocumentMargin(0)
+        self.output.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.output.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.output.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
         output_layout.addWidget(self.output)
         self.output_frame.hide()
         self.input = QLineEdit()
         self.input.setPlaceholderText("Ask pi...")
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.addLayout(header)
-        layout.addWidget(self.label)
-        layout.addWidget(self.output_frame)
-        layout.addWidget(self.input)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(16, 12, 16, 12)
+        self.main_layout.addWidget(self.header)
+        self.main_layout.addWidget(self.label)
+        self.main_layout.addWidget(self.output_frame)
+        self.main_layout.addWidget(self.input)
         self.setMinimumHeight(72)
         self.resize(380, 88)
+        allow_fullscreen_overlay(self)
         self._follow_timer = QTimer(self)
         self._follow_timer.timeout.connect(self._follow_cursor)
         self._countdown_timer = QTimer(self)
@@ -94,14 +106,19 @@ class CompanionBubble(QFrame):
 
     def show_chat(self, on_submit) -> None:
         self.cancel_countdown()
+        self.setMinimumHeight(72)
         self.state = CompanionState.CHAT_INPUT
         try:
             self.input.returnPressed.disconnect()
         except (RuntimeError, TypeError):
             pass
         self.input.returnPressed.connect(lambda: on_submit(self.input.text()))
+        self.main_layout.setContentsMargins(16, 12, 16, 12)
+        self.header.show()
         self.status_label.setText("OSPilot")
+        self.label.setMaximumHeight(16777215)
         self.label.setText("")
+        self.label.show()
         self.output.clear()
         self.output_frame.hide()
         self.input.setPlaceholderText("Ask pi...")
@@ -111,42 +128,63 @@ class CompanionBubble(QFrame):
 
     def show_voice_placeholder(self) -> None:
         self.cancel_countdown()
+        self.setMinimumHeight(72)
         self.state = CompanionState.VOICE_INPUT
+        self.main_layout.setContentsMargins(16, 12, 16, 12)
+        self.header.show()
         self.status_label.setText("Voice")
+        self.label.setMaximumHeight(16777215)
         self.label.setText("Voice input placeholder. Type support can be wired next.")
+        self.label.show()
         self.output_frame.hide()
         self.input.setVisible(False)
         self._show_near_cursor()
 
-    def show_status(self, text: str, state: CompanionState = CompanionState.THINKING) -> None:
+    def show_status(self, text: str, state: CompanionState = CompanionState.THINKING, tool_name: str = "") -> None:
         self.cancel_countdown()
+        self.setMinimumHeight(72)
         self.state = state
-        self.status_label.setText("Thinking" if state == CompanionState.THINKING else "OSPilot")
+        self.main_layout.setContentsMargins(16, 12, 16, 12)
+        self.header.show()
+        if tool_name:
+            self.status_label.setText(f"Running: {tool_name}")
+        else:
+            self.status_label.setText("Thinking" if state == CompanionState.THINKING else "OSPilot")
+        self.label.setMaximumHeight(16777215)
         self.label.setText(text)
+        self.label.show()
+        if state == CompanionState.THINKING:
+            self.output.clear()
         self.output_frame.hide()
         self.input.setVisible(False)
         self._show_near_cursor()
 
     def show_output(self, text: str) -> None:
         self.cancel_countdown()
+        self.setMinimumHeight(72)
         self.state = CompanionState.OUTPUT
-        self.status_label.setText("Answer")
-        self.label.setText("")
-        self.output.setPlainText(text)
-        self._scroll_output_to_bottom()
+        self.main_layout.setContentsMargins(12, 8, 30, 8)
+        self.header.hide()
+        self.label.hide()
+        self._set_output_markdown(text)
         self.output_frame.show()
         self.input.setVisible(False)
-        self._show_near_cursor(width=460)
+        self._show_near_cursor(width=420)
 
     def show_final_output(self, text: str) -> None:
         self.show_output(text)
         self.start_countdown(text)
 
     def reset(self) -> None:
+        self.setMinimumHeight(72)
         self.state = CompanionState.HIDDEN
         self.input.clear()
         self.output.clear()
+        self.label.setMaximumHeight(16777215)
         self.status_label.setText("")
+        self.header.show()
+        self.label.show()
+        self.main_layout.setContentsMargins(16, 12, 16, 12)
         self.cancel_countdown()
         self._follow_timer.stop()
         self.hide()
@@ -156,6 +194,7 @@ class CompanionBubble(QFrame):
         self._countdown_seconds = seconds
         self._countdown_started = time.monotonic()
         self.countdown_ring.set_progress(1.0)
+        self._position_countdown_ring()
         self.countdown_ring.show()
         self._countdown_timer.start(50)
 
@@ -177,14 +216,17 @@ class CompanionBubble(QFrame):
         if self.output_frame.isVisible():
             self._fit_output_to_text(width)
         self.adjustSize()
+        self._position_countdown_ring()
         target = self._position_near_cursor()
+        allow_fullscreen_overlay(self)
         if not self.isVisible():
             self.move(target)
             self.show()
+            allow_fullscreen_overlay(self)
         if not self._follow_timer.isActive():
             self._follow_timer.start(16)
         self.raise_()
-        self.activateWindow()
+        order_front(self)
 
     def _follow_cursor(self) -> None:
         if not self.isVisible():
@@ -201,6 +243,21 @@ class CompanionBubble(QFrame):
         if eased != current:
             self.move(eased)
 
+    def _set_output_markdown(self, text: str) -> None:
+        try:
+            self.output.document().setDefaultStyleSheet(
+                "body { color: rgba(255, 255, 255, 230); } "
+                "p { margin: 0 0 6px 0; } "
+                "ul, ol { margin-top: 0; margin-bottom: 6px; padding-left: 18px; } "
+                "li { margin: 0 0 2px 0; } "
+                "code { color: #d7e8ff; background-color: rgba(255, 255, 255, 18); } "
+                "pre { background-color: rgba(255, 255, 255, 14); margin: 4px 0; } "
+                "a { color: #8bbcff; }"
+            )
+            self.output.setMarkdown(text)
+        except AttributeError:
+            self.output.setPlainText(text)
+
     def _fit_output_to_text(self, width: int) -> None:
         frame_padding = 18
         text_width = max(80, width - 28 - frame_padding)
@@ -210,11 +267,14 @@ class CompanionBubble(QFrame):
         max_text_height = row_height * 4 + 8
         text_height = max(row_height + 8, min(document_height + 4, max_text_height))
         self.output.setFixedHeight(int(text_height))
-        self.output_frame.setFixedHeight(int(text_height + 14))
+        self.output_frame.setFixedHeight(int(text_height))
         self._scroll_output_to_bottom()
 
     def _scroll_output_to_bottom(self) -> None:
         QTimer.singleShot(0, lambda: self.output.verticalScrollBar().setValue(self.output.verticalScrollBar().maximum()))
+
+    def _position_countdown_ring(self) -> None:
+        self.countdown_ring.move(max(0, self.width() - self.countdown_ring.width() - 9), 8)
 
     def _position_near_cursor(self) -> QPoint:
         cursor = QCursor.pos()
@@ -235,6 +295,9 @@ class CompanionBubble(QFrame):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
-        painter.setBrush(QColor("#1a1c22"))
-        painter.setPen(QPen(QColor("#555b68"), 1))
-        painter.drawRoundedRect(rect, 14, 14)
+
+        # Base liquid glass fill - semi-transparent dark with slight blue tint
+        painter.setBrush(QColor(32, 35, 45, 155))
+        painter.setPen(QPen(QColor(255, 255, 255, 45), 1))
+        painter.drawRoundedRect(rect, 20, 20)
+

@@ -5,7 +5,8 @@ import threading
 import time
 from typing import Any, Callable
 
-from .coordinates import Bounds, ease_in_out_cubic, normalize_target
+from .coordinates import Bounds, clamp_point, human_mouse_path, normalize_target
+from .screenshot import get_last_screenshot_context
 
 
 StopPredicate = Callable[[], bool]
@@ -14,6 +15,7 @@ StopPredicate = Callable[[], bool]
 class MouseController:
     def __init__(self) -> None:
         self._stop = threading.Event()
+        self._lock = threading.Lock()
 
     def stop(self) -> None:
         self._stop.set()
@@ -24,28 +26,40 @@ class MouseController:
     def move_mouse(self, target: dict[str, Any], duration_ms: int | None = None) -> dict:
         import Quartz
 
-        start_event = Quartz.CGEventCreate(None)
-        start_pos = Quartz.CGEventGetLocation(start_event)
-        display_id, display_bounds = _display_for_point(Quartz, start_pos.x, start_pos.y)
-        if display_id is None or display_bounds is None:
-            return {"ok": False, "tool": "ospilot_move_mouse", "error": "no screen found"}
-        bounds = Bounds(display_bounds.origin.x, display_bounds.origin.y, display_bounds.size.width, display_bounds.size.height)
-        end_x, end_y = normalize_target(target, bounds)
-        distance = math.dist((start_pos.x, start_pos.y), (end_x, end_y))
-        duration = max(0.05, (duration_ms if duration_ms is not None else min(800, max(300, distance * 0.8))) / 1000)
-        steps = max(8, int(duration * 60))
-        self.reset()
-        for index in range(steps + 1):
-            if self._stop.is_set():
-                return {"ok": False, "tool": "ospilot_move_mouse", "error": "stopped"}
-            t = ease_in_out_cubic(index / steps)
-            Quartz.CGWarpMouseCursorPosition((start_pos.x + (end_x - start_pos.x) * t, start_pos.y + (end_y - start_pos.y) * t))
-            time.sleep(duration / steps)
-        return {"ok": True, "tool": "ospilot_move_mouse", "target": {"x": end_x, "y": end_y}, "metadata": {"duration_ms": round(duration * 1000)}}
+        with self._lock:
+            start_event = Quartz.CGEventCreate(None)
+            start_pos = Quartz.CGEventGetLocation(start_event)
+            display_id, display_bounds = _display_for_point(Quartz, start_pos.x, start_pos.y)
+            if display_id is None or display_bounds is None:
+                return {"ok": False, "tool": "ospilot_move_mouse", "error": "no screen found"}
+            bounds = Bounds(display_bounds.origin.x, display_bounds.origin.y, display_bounds.size.width, display_bounds.size.height)
+            end_x, end_y = normalize_target(target, bounds, get_last_screenshot_context())
+            end_x, end_y = clamp_point(end_x, end_y, bounds)
+            distance = math.dist((start_pos.x, start_pos.y), (end_x, end_y))
+            requested_ms = duration_ms if isinstance(duration_ms, int | float) else None
+            auto_ms = min(350, max(80, 45 + distance * 0.24))
+            duration_ms_final = min(700, max(60, requested_ms if requested_ms is not None else auto_ms))
+            duration = duration_ms_final / 1000
+            steps = max(10, min(90, int(duration * 120)))
+            path = human_mouse_path((start_pos.x, start_pos.y), (end_x, end_y), steps)
+            self.reset()
+            last = time.perf_counter()
+            for index, point in enumerate(path):
+                if self._stop.is_set():
+                    return {"ok": False, "tool": "ospilot_move_mouse", "error": "stopped"}
+                Quartz.CGWarpMouseCursorPosition(point)
+                if index < len(path) - 1:
+                    # Tiny cadence variation avoids a perfectly mechanical 60Hz line.
+                    slice_duration = duration / steps * (0.72 + 0.56 * ((index % 5) / 4))
+                    last += slice_duration
+                    time.sleep(max(0.0, last - time.perf_counter()))
+            final_pos = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
+            final_error_px = math.dist((final_pos.x, final_pos.y), (end_x, end_y))
+            return {"ok": True, "tool": "ospilot_move_mouse", "target": {"x": end_x, "y": end_y}, "metadata": {"duration_ms": round(duration * 1000), "steps": steps, "profile": "human_bezier", "final_error_px": round(final_error_px, 2)}}
 
     def click(self, target: dict[str, Any] | None = None, double: bool = False) -> dict:
         if target:
-            moved = self.move_mouse(target, 250)
+            moved = self.move_mouse(target, 90)
             if not moved.get("ok"):
                 return moved
         try:

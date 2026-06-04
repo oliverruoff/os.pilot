@@ -18,10 +18,11 @@ from ospilot.pi.runtime import PiRuntime
 from ospilot.tools.mouse import MouseController
 from ospilot.tools.registry import build_default_registry
 from ospilot.ui import CompanionBubble, CompanionState, CursorHalo, GlobalShortcuts, TrayController
+from ospilot.ui.macos_window import configure_background_app
 
 
 class UiDispatch(QObject):
-    pi_event = Signal(str, str)
+    pi_event = Signal(str, str, str)
     error = Signal(str)
     ready = Signal(str)
     local_tool = Signal(str, str)
@@ -32,13 +33,14 @@ class OSPilotApp:
         self.config = load_config()
         self.logger = setup_logging(self.config)
         self.qt = QApplication(sys.argv)
+        configure_background_app()
         self.qt.setQuitOnLastWindowClosed(False)
         self.loop = asyncio.new_event_loop()
         threading.Thread(target=self.loop.run_forever, daemon=True).start()
         self.ui_dispatch = UiDispatch()
         self.ui_dispatch.pi_event.connect(self._apply_pi_event)
         self.ui_dispatch.error.connect(self._show_error)
-        self.ui_dispatch.ready.connect(lambda message: self.companion.show_status(message, CompanionState.OUTPUT))
+        self.ui_dispatch.ready.connect(lambda message: self.tray.notify("OSPilot", message))
         self.ui_dispatch.local_tool.connect(self._apply_local_tool_state)
         self._stream_buffer = ""
         self._last_output = ""
@@ -77,12 +79,10 @@ class OSPilotApp:
 
     def open_chat(self) -> None:
         self.logger.info("open_chat")
-        self.tray.notify("OSPilot", "Opening chat")
         self.companion.show_chat(self.submit_prompt)
 
     def open_voice(self) -> None:
         self.logger.info("open_voice")
-        self.tray.notify("OSPilot", "Opening voice placeholder")
         self.companion.show_voice_placeholder()
 
     def submit_prompt(self, text: str) -> None:
@@ -122,21 +122,22 @@ class OSPilotApp:
         QTimer.singleShot(100, self.qt.quit)
 
     async def _on_pi_event(self, event) -> None:
-        tool_name = event.payload.get("toolName") if isinstance(event.payload, dict) else None
+        from ospilot.pi.events import tool_name_from_event
+        tool_name = tool_name_from_event(event)
         self.logger.info("pi_event type=%s%s", event.type, f" tool={tool_name}" if tool_name else "")
         text = event_text(event)
         role = ""
         message = event.payload.get("message") if isinstance(event.payload, dict) else None
         if isinstance(message, dict) and isinstance(message.get("role"), str):
             role = message["role"]
-        self.ui_dispatch.pi_event.emit(event.type, f"{role}\n{text}")
+        self.ui_dispatch.pi_event.emit(event.type, f"{role}\n{text}", tool_name or "")
 
-    def _apply_pi_event(self, event_type: str, text: str) -> None:
+    def _apply_pi_event(self, event_type: str, text: str, tool_name: str = "") -> None:
         role, text = self._split_event_text(text)
         if self._active_prompt:
             self._watchdog.start(45_000)
         if event_type in {"agent_start", "turn_start", "auto_retry_start"}:
-            self.companion.show_status(text or "Thinking...", CompanionState.THINKING)
+            self.companion.show_status(text or "Thinking...", CompanionState.THINKING, tool_name)
         elif event_type == "message_start":
             self._message_role = role
             if role != "user":
@@ -151,27 +152,29 @@ class OSPilotApp:
             self._last_output = self._stream_buffer
             self.companion.show_output(self._stream_buffer)
         elif event_type == "tool_execution_start":
-            self.companion.show_status(text or "Running tool...", CompanionState.TOOL_RUNNING)
+            self.companion.show_status(text or f"Running {tool_name}...", CompanionState.TOOL_RUNNING, tool_name)
         elif event_type == "tool_execution_update":
-            self.companion.show_status(text or "Tool running...", CompanionState.TOOL_RUNNING)
+            self.companion.show_status(text or f"Running {tool_name}...", CompanionState.TOOL_RUNNING, tool_name)
         elif event_type == "tool_execution_end":
             if self._last_output:
                 self.companion.show_output(self._last_output)
             else:
-                self.companion.show_status(text or "Tool finished", CompanionState.TOOL_RUNNING)
+                self.companion.show_status(text or "Tool finished", CompanionState.TOOL_RUNNING, tool_name)
         elif event_type in {"agent_end", "auto_retry_end"}:
             self._active_prompt = False
             self._watchdog.stop()
             self.halo.hide_halo()
             if self._last_output:
                 self.companion.show_final_output(self._last_output)
+            else:
+                self.companion.show_final_output(text or "Done.")
         elif event_type in {"extension_error"}:
             self._active_prompt = False
             self._watchdog.stop()
-            self.companion.show_status(text or "Extension error", CompanionState.ERROR)
+            self.companion.show_status(text or "Extension error", CompanionState.ERROR, tool_name)
             self.halo.show_halo("error")
         elif event_type == "extension_ui_request":
-            self.companion.show_status(text or "pi requests input", CompanionState.EXTENSION_UI)
+            self.companion.show_status(text or "pi requests input", CompanionState.EXTENSION_UI, tool_name)
 
     def _show_error(self, message: str) -> None:
         self._active_prompt = False
@@ -225,8 +228,9 @@ class OSPilotApp:
             return
         if not error:
             return
-        self.logger.error("%s failed: %s", label, error)
-        self.ui_dispatch.error.emit(f"{label} failed: {error}")
+        error_message = str(error) or type(error).__name__
+        self.logger.error("%s failed: %s", label, error_message)
+        self.ui_dispatch.error.emit(f"{label} failed: {error_message}")
 
     def _install_extension(self) -> None:
         source = Path(__file__).resolve().parents[2] / "pi_extension" / "ospilot-desktop-tools.ts"

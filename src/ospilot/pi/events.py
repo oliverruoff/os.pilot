@@ -59,6 +59,9 @@ def event_text(event: PiEvent) -> str:
             return content["text"]
     message = event.payload.get("message")
     if isinstance(message, dict):
+        error = message.get("errorMessage")
+        if isinstance(error, str):
+            return error
         content = message.get("content")
         if isinstance(content, str):
             return content
@@ -69,3 +72,11 @@ def event_text(event: PiEvent) -> str:
                     parts.append(item["text"])
             return "".join(parts)
     return ""
+
+
+def tool_name_from_event(event: PiEvent) -> str | None:
+    if event.type in ("tool_execution_start", "tool_execution_update", "tool_execution_end"):
+        name = event.payload.get("toolName")
+        if isinstance(name, str):
+            return name
+    return None
