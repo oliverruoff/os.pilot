@@ -108,6 +108,14 @@ class CompanionBubble(QFrame):
     def show_chat(self, on_submit) -> None:
         self.cancel_countdown()
         self.setMinimumHeight(72)
+        if self.isVisible() and self.state != CompanionState.CHAT_INPUT:
+            # Re-show the bubble when switching from passive output/status mode
+            # to input mode. On macOS a window previously shown as
+            # non-activating may not reliably become key until it is ordered in
+            # again with the non-activating style removed.
+            self.hide()
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+        allow_fullscreen_overlay(self, nonactivating=False)
         self.state = CompanionState.CHAT_INPUT
         try:
             self.input.returnPressed.disconnect()
@@ -130,6 +138,7 @@ class CompanionBubble(QFrame):
     def show_voice_placeholder(self) -> None:
         self.cancel_countdown()
         self.setMinimumHeight(72)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = CompanionState.VOICE_INPUT
         self.main_layout.setContentsMargins(16, 12, 16, 12)
         self.header.show()
@@ -144,6 +153,7 @@ class CompanionBubble(QFrame):
     def show_status(self, text: str, state: CompanionState = CompanionState.THINKING, tool_name: str = "") -> None:
         self.cancel_countdown()
         self.setMinimumHeight(72)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = state
         self.main_layout.setContentsMargins(16, 12, 16, 12)
         self.header.show()
@@ -163,6 +173,7 @@ class CompanionBubble(QFrame):
     def show_output(self, text: str, expanded: bool = False) -> None:
         self.cancel_countdown()
         self.setMinimumHeight(72)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = CompanionState.OUTPUT
         self._expanded_output = expanded
         self.main_layout.setContentsMargins(12, 8, 30, 8)
@@ -215,6 +226,7 @@ class CompanionBubble(QFrame):
             self.reset()
 
     def _show_near_cursor(self, width: int = 380, accept_keyboard: bool = False) -> None:
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, not accept_keyboard)
         self.setFixedWidth(width)
         if self.output_frame.isVisible():
             self._fit_output_to_text(width)
@@ -231,6 +243,9 @@ class CompanionBubble(QFrame):
         self.raise_()
         if accept_keyboard:
             order_front(self, make_key=True)
+            QApplication.setActiveWindow(self)
+            self.activateWindow()
+            self.input.activateWindow()
             self.input.setFocus(Qt.FocusReason.ShortcutFocusReason)
         else:
             order_front(self)
