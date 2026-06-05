@@ -30,6 +30,7 @@ class UiDispatch(QObject):
 
 class OSPilotApp:
     def __init__(self) -> None:
+        _configure_process_for_platform()
         self.config = load_config()
         self.logger = setup_logging(self.config)
         self.qt = QApplication(sys.argv)
@@ -286,6 +287,13 @@ class OSPilotApp:
 
 def main() -> int:
     return OSPilotApp().run()
+
+
+def _configure_process_for_platform() -> None:
+    if sys.platform == "win32":
+        from ospilot.desktop.windows.window import set_process_dpi_awareness
+
+        set_process_dpi_awareness()
 
 
 if __name__ == "__main__":

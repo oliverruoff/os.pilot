@@ -31,7 +31,7 @@ class MouseController:
         with self._lock:
             try:
                 mouse = Controller()
-                start_x, start_y = mouse.position
+                start_x, start_y = _cursor_position()
                 bounds = _monitor_bounds_for_point(start_x, start_y)
                 end_x, end_y = normalize_target(target, bounds, get_last_screenshot_context())
                 end_x, end_y = clamp_point(end_x, end_y, bounds)
@@ -47,12 +47,13 @@ class MouseController:
                 for index, point in enumerate(path):
                     if self._stop.is_set():
                         return {"ok": False, "tool": tool, "error": "stopped"}
-                    mouse.position = (round(point[0]), round(point[1]))
+                    _set_cursor_position(round(point[0]), round(point[1]), mouse)
                     if index < len(path) - 1:
                         slice_duration = duration / steps * (0.72 + 0.56 * ((index % 5) / 4))
                         last += slice_duration
                         time.sleep(max(0.0, last - time.perf_counter()))
-                final_x, final_y = mouse.position
+                _set_cursor_position(round(end_x), round(end_y), mouse)
+                final_x, final_y = _cursor_position()
                 final_error_px = math.dist((final_x, final_y), (end_x, end_y))
                 return {"ok": True, "tool": tool, "target": {"x": end_x, "y": end_y}, "metadata": {"duration_ms": round(duration * 1000), "steps": steps, "profile": "human_bezier", "final_error_px": round(final_error_px, 2)}}
             except Exception as exc:
@@ -77,7 +78,7 @@ class MouseController:
             mouse = Controller()
             pynput_button = Button.right if button == "right" else Button.left
             mouse.click(pynput_button, 2 if double else 1)
-            x, y = mouse.position
+            x, y = _cursor_position()
             return {"ok": True, "tool": tool, "target": {"x": x, "y": y}, "metadata": {"button": button}}
         except Exception as exc:
             return {"ok": False, "tool": tool, "error": str(exc)}
@@ -108,3 +109,43 @@ def _monitor_bounds_for_point(x: float, y: float) -> Bounds:
     except Exception:
         pass
     return Bounds(0, 0, 1920, 1080)
+
+
+def _cursor_position() -> tuple[int, int]:
+    try:
+        import ctypes
+        from ctypes import Structure, byref, wintypes
+
+        class POINT(Structure):
+            _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+        ctypes.windll.user32.GetCursorPos.argtypes = [ctypes.POINTER(POINT)]
+        ctypes.windll.user32.GetCursorPos.restype = wintypes.BOOL
+        point = POINT()
+        if ctypes.windll.user32.GetCursorPos(byref(point)):
+            return int(point.x), int(point.y)
+    except Exception:
+        pass
+
+    from pynput.mouse import Controller
+
+    x, y = Controller().position
+    return int(x), int(y)
+
+
+def _set_cursor_position(x: int, y: int, mouse=None) -> None:
+    try:
+        import ctypes
+
+        ctypes.windll.user32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
+        ctypes.windll.user32.SetCursorPos.restype = ctypes.c_bool
+        if ctypes.windll.user32.SetCursorPos(int(x), int(y)):
+            return
+    except Exception:
+        pass
+
+    if mouse is None:
+        from pynput.mouse import Controller
+
+        mouse = Controller()
+    mouse.position = (int(x), int(y))

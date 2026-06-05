@@ -6,6 +6,31 @@ from ctypes import wintypes
 from PySide6.QtCore import Qt
 
 
+def set_process_dpi_awareness() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        # PER_MONITOR_AWARE_V2 keeps UIA, screenshots, Qt, and cursor movement
+        # in physical screen coordinates on mixed-DPI Windows desktops.
+        if hasattr(user32, "SetProcessDpiAwarenessContext"):
+            user32.SetProcessDpiAwarenessContext.argtypes = [wintypes.HANDLE]
+            user32.SetProcessDpiAwarenessContext.restype = wintypes.BOOL
+            if user32.SetProcessDpiAwarenessContext(wintypes.HANDLE(-4)):
+                return
+        shcore = ctypes.windll.shcore
+        shcore.SetProcessDpiAwareness.argtypes = [ctypes.c_int]
+        shcore.SetProcessDpiAwareness.restype = ctypes.c_long
+        shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            return
+
+
 def configure_background_app() -> None:
     return
 
