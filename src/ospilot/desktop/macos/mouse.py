@@ -33,9 +33,11 @@ class MouseController:
             display_id, display_bounds = _display_for_point(Quartz, start_pos.x, start_pos.y)
             if display_id is None or display_bounds is None:
                 return {"ok": False, "tool": "ospilot_move_mouse", "error": "no screen found"}
-            bounds = Bounds(display_bounds.origin.x, display_bounds.origin.y, display_bounds.size.width, display_bounds.size.height)
-            end_x, end_y = normalize_target(target, bounds, get_last_screenshot_context())
-            end_x, end_y = clamp_point(end_x, end_y, bounds)
+            start_bounds = Bounds(display_bounds.origin.x, display_bounds.origin.y, display_bounds.size.width, display_bounds.size.height)
+            screenshot_context = get_last_screenshot_context()
+            end_x, end_y = normalize_target(target, start_bounds, screenshot_context)
+            target_bounds = _bounds_for_target(Quartz, end_x, end_y, target, start_bounds, screenshot_context)
+            end_x, end_y = clamp_point(end_x, end_y, target_bounds)
             distance = math.dist((start_pos.x, start_pos.y), (end_x, end_y))
             requested_ms = duration_ms if isinstance(duration_ms, int | float) else None
             auto_ms = min(350, max(80, 45 + distance * 0.24))
@@ -54,6 +56,7 @@ class MouseController:
                     slice_duration = duration / steps * (0.72 + 0.56 * ((index % 5) / 4))
                     last += slice_duration
                     time.sleep(max(0.0, last - time.perf_counter()))
+            Quartz.CGWarpMouseCursorPosition((end_x, end_y))
             final_pos = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
             final_error_px = math.dist((final_pos.x, final_pos.y), (end_x, end_y))
             return {"ok": True, "tool": "ospilot_move_mouse", "target": {"x": end_x, "y": end_y}, "metadata": {"duration_ms": round(duration * 1000), "steps": steps, "profile": "human_bezier", "final_error_px": round(final_error_px, 2)}}
@@ -66,22 +69,33 @@ class MouseController:
 
     def _click(self, target: dict[str, Any] | None = None, button: str = "left", double: bool = False) -> dict:
         tool = _click_tool(button, double)
+        click_target: dict[str, float] | None = None
         if target:
             moved = self.move_mouse(target, 90)
             if not moved.get("ok"):
                 return moved
+            moved_target = moved.get("target")
+            if isinstance(moved_target, dict) and isinstance(moved_target.get("x"), int | float) and isinstance(moved_target.get("y"), int | float):
+                click_target = {"x": float(moved_target["x"]), "y": float(moved_target["y"])}
             time.sleep(0.06)
         try:
             import Quartz
 
             source = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
-            pos = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
-            _activate_app_at_point(Quartz, pos.x, pos.y)
+            if click_target:
+                pos_x = click_target["x"]
+                pos_y = click_target["y"]
+                Quartz.CGWarpMouseCursorPosition((pos_x, pos_y))
+            else:
+                pos = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
+                pos_x = float(pos.x)
+                pos_y = float(pos.y)
+            _activate_app_at_point(Quartz, pos_x, pos_y)
             event_type_down, event_type_up, quartz_button = _quartz_button_events(Quartz, button)
             for index in range(2 if double else 1):
                 click_state = index + 1 if double else 1
-                down = Quartz.CGEventCreateMouseEvent(source, event_type_down, (pos.x, pos.y), quartz_button)
-                up = Quartz.CGEventCreateMouseEvent(source, event_type_up, (pos.x, pos.y), quartz_button)
+                down = Quartz.CGEventCreateMouseEvent(source, event_type_down, (pos_x, pos_y), quartz_button)
+                up = Quartz.CGEventCreateMouseEvent(source, event_type_up, (pos_x, pos_y), quartz_button)
                 Quartz.CGEventSetIntegerValueField(down, Quartz.kCGMouseEventClickState, click_state)
                 Quartz.CGEventSetIntegerValueField(up, Quartz.kCGMouseEventClickState, click_state)
                 _post_mouse_event(Quartz, down)
@@ -89,7 +103,7 @@ class MouseController:
                 _post_mouse_event(Quartz, up)
                 if double and index == 0:
                     time.sleep(0.06)
-            return {"ok": True, "tool": tool, "target": {"x": pos.x, "y": pos.y}, "metadata": {"event_tap": "hid", "button": button}}
+            return {"ok": True, "tool": tool, "target": {"x": pos_x, "y": pos_y}, "metadata": {"event_tap": "hid", "button": button}}
         except Exception as exc:
             return {"ok": False, "tool": tool, "error": str(exc)}
 
@@ -106,6 +120,36 @@ def _display_for_point(Quartz, x: float, y: float):
         display_id = displays[0]
         return display_id, Quartz.CGDisplayBounds(display_id)
     return None, None
+
+
+def _bounds_for_target(Quartz, x: float, y: float, target: dict[str, Any], fallback: Bounds, screenshot_context: dict[str, Any] | None) -> Bounds:
+    coordinate_space = str(target.get("coordinate_space", "")).strip()
+    if coordinate_space == "screenshot_pixel":
+        screenshot_bounds = _bounds_from_screenshot_context(screenshot_context)
+        if screenshot_bounds is not None:
+            return screenshot_bounds
+
+    display_id, display_bounds = _display_for_point(Quartz, x, y)
+    if display_id is not None and display_bounds is not None:
+        return Bounds(display_bounds.origin.x, display_bounds.origin.y, display_bounds.size.width, display_bounds.size.height)
+    return fallback
+
+
+def _bounds_from_screenshot_context(screenshot_context: dict[str, Any] | None) -> Bounds | None:
+    if not screenshot_context:
+        return None
+    monitor_bounds = screenshot_context.get("monitor_bounds")
+    if not isinstance(monitor_bounds, dict):
+        return None
+    x = monitor_bounds.get("x")
+    y = monitor_bounds.get("y")
+    width = monitor_bounds.get("width")
+    height = monitor_bounds.get("height")
+    if not all(isinstance(value, int | float) for value in (x, y, width, height)):
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return Bounds(float(x), float(y), float(width), float(height))
 
 
 def _click_tool(button: str, double: bool) -> str:
