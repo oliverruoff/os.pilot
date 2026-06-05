@@ -1,6 +1,6 @@
 import asyncio
 
-from ospilot.pi.events import PiEvent, event_text
+from ospilot.pi.events import PiEvent, event_text, event_thinking_text, final_answer_text
 from ospilot.pi.rpc import JsonRpcMessage, PiRpcClient, PiRpcCommand
 
 
@@ -55,3 +55,39 @@ def test_event_text_ignores_reasoning_content_parts() -> None:
     )
 
     assert event_text(event) == "final answer"
+
+
+def test_event_thinking_text_extracts_reasoning_content_parts() -> None:
+    event = PiEvent(
+        type="message_update",
+        payload={
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "reasoning", "text": "thinking through it"},
+                    {"type": "text", "text": "final answer"},
+                    {"kind": "thought", "text": " and checking"},
+                ],
+            }
+        },
+    )
+
+    assert event_thinking_text(event) == "thinking through it and checking"
+
+
+def test_event_text_extracts_string_delta() -> None:
+    event = PiEvent(type="message_update", payload={"delta": "Hi"})
+
+    assert event_text(event) == "Hi"
+
+
+def test_final_answer_text_strips_leading_reasoning_sentence() -> None:
+    text = "the user said hi, I propably also should say Hi. Hi :)"
+
+    assert final_answer_text(text) == "Hi :)"
+
+
+def test_final_answer_text_uses_explicit_marker() -> None:
+    text = "I need to answer briefly. Final answer: Hi :)"
+
+    assert final_answer_text(text) == "Hi :)"

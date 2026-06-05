@@ -13,13 +13,13 @@ from ospilot.core.logging import setup_logging
 from ospilot.desktop import create_desktop_backend
 from ospilot.desktop.registry import build_default_registry
 from ospilot.ipc import IpcServer
-from ospilot.pi.events import event_text
+from ospilot.pi.events import event_text, event_thinking_text, final_answer_text
 from ospilot.pi.runtime import PiRuntime
 from ospilot.ui import CompanionBubble, CompanionState, CursorHalo, TrayController
 
 
 class UiDispatch(QObject):
-    pi_event = Signal(str, str, str)
+    pi_event = Signal(str, str, str, str)
     error = Signal(str)
     ready = Signal(str)
     local_tool = Signal(str, str)
@@ -43,6 +43,7 @@ class OSPilotApp:
         self.ui_dispatch.ready.connect(lambda message: self.tray.notify("OSPilot", message))
         self.ui_dispatch.local_tool.connect(self._apply_local_tool_state)
         self._stream_buffer = ""
+        self._thinking_buffer = ""
         self._last_output = ""
         self._message_role = ""
         self._active_prompt = False
@@ -94,8 +95,9 @@ class OSPilotApp:
         if text == "/new":
             self.new_session()
             return
-        self.companion.show_status("Thinking...", CompanionState.THINKING)
+        self.companion.begin_thinking()
         self._stream_buffer = ""
+        self._thinking_buffer = ""
         self._last_output = ""
         self._message_role = ""
         self._active_prompt = True
@@ -126,25 +128,34 @@ class OSPilotApp:
         tool_name = tool_name_from_event(event)
         self.logger.info("pi_event type=%s%s", event.type, f" tool={tool_name}" if tool_name else "")
         text = event_text(event)
+        thinking_text = event_thinking_text(event)
         role = ""
         message = event.payload.get("message") if isinstance(event.payload, dict) else None
         if isinstance(message, dict) and isinstance(message.get("role"), str):
             role = message["role"]
-        self.ui_dispatch.pi_event.emit(event.type, f"{role}\n{text}", tool_name or "")
+        self.ui_dispatch.pi_event.emit(event.type, f"{role}\n{text}", tool_name or "", thinking_text)
 
-    def _apply_pi_event(self, event_type: str, text: str, tool_name: str = "") -> None:
+    def _apply_pi_event(self, event_type: str, text: str, tool_name: str = "", thinking_text: str = "") -> None:
         role, text = self._split_event_text(text)
         if self._active_prompt:
             self._watchdog.start(45_000)
         if event_type in {"agent_start", "turn_start", "auto_retry_start"}:
-            self.companion.show_status(text or "Thinking...", CompanionState.THINKING, tool_name)
+            if thinking_text or text:
+                self.companion.show_stream(thinking_text or text)
         elif event_type == "message_start":
             self._message_role = role
             if role != "user":
                 self._stream_buffer = ""
-        elif event_type == "message_update" and text and self._message_role != "user":
-            self._stream_buffer = self._merge_stream_text(self._stream_buffer, text)
-            self._last_output = self._stream_buffer
+                self._thinking_buffer = ""
+        elif event_type == "message_update" and self._message_role != "user":
+            if thinking_text:
+                self._thinking_buffer = self._merge_stream_text(self._thinking_buffer, thinking_text)
+                self.companion.show_stream(self._thinking_buffer)
+            if text:
+                self._stream_buffer = self._merge_stream_text(self._stream_buffer, text)
+                self._last_output = self._stream_buffer
+                if not thinking_text:
+                    self.companion.show_stream(self._stream_buffer)
         elif event_type == "message_end" and text and role != "user":
             if not self._stream_buffer or len(text) > len(self._stream_buffer):
                 self._stream_buffer = text
@@ -155,7 +166,7 @@ class OSPilotApp:
             self.companion.show_status(text or f"Running {tool_name}...", CompanionState.TOOL_RUNNING, tool_name)
         elif event_type == "tool_execution_end":
             if self._last_output:
-                self.companion.show_status("Thinking...", CompanionState.THINKING)
+                self.companion.show_stream(self._thinking_buffer or self._stream_buffer)
             else:
                 self.companion.show_status(text or "Tool finished", CompanionState.TOOL_RUNNING, tool_name)
         elif event_type in {"agent_end", "auto_retry_end"}:
@@ -163,9 +174,9 @@ class OSPilotApp:
             self._watchdog.stop()
             self.halo.hide_halo()
             if self._last_output:
-                self.companion.show_final_output(self._last_output)
+                self.companion.show_final_output(final_answer_text(self._last_output))
             else:
-                self.companion.show_final_output(text or "Done.")
+                self.companion.show_final_output(final_answer_text(text) or "Done.")
         elif event_type in {"extension_error"}:
             self._active_prompt = False
             self._watchdog.stop()
@@ -215,7 +226,7 @@ class OSPilotApp:
         self._active_prompt = False
         self.halo.hide_halo()
         if self._last_output:
-            self.companion.show_output(self._last_output)
+            self.companion.show_output(final_answer_text(self._last_output))
         else:
             self.companion.show_status("No activity from pi for 45s. Use Stop and try again.", CompanionState.ERROR)
 

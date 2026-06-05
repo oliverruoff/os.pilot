@@ -104,6 +104,8 @@ class CompanionBubble(QFrame):
         self._countdown_started = 0.0
         self._countdown_seconds = 0.0
         self._expanded_output = False
+        self._fit_final_output = False
+        self._mouse_passthrough = False
 
     def show_chat(self, on_submit) -> None:
         self.cancel_countdown()
@@ -124,11 +126,11 @@ class CompanionBubble(QFrame):
             pass
         self.input.returnPressed.connect(lambda: on_submit(self.input.text()))
         self.main_layout.setContentsMargins(16, 12, 16, 12)
-        self.header.show()
-        self.status_label.setText("OSPilot")
+        self.header.hide()
+        self.status_label.setText("")
         self.label.setMaximumHeight(16777215)
         self.label.setText("")
-        self.label.show()
+        self.label.hide()
         self.output.clear()
         self.output_frame.hide()
         self.input.setPlaceholderText("Ask pi...")
@@ -143,8 +145,8 @@ class CompanionBubble(QFrame):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = CompanionState.VOICE_INPUT
         self.main_layout.setContentsMargins(16, 12, 16, 12)
-        self.header.show()
-        self.status_label.setText("Voice")
+        self.header.hide()
+        self.status_label.setText("")
         self.label.setMaximumHeight(16777215)
         self.label.setText("Voice input placeholder. Type support can be wired next.")
         self.label.show()
@@ -154,42 +156,84 @@ class CompanionBubble(QFrame):
 
     def show_status(self, text: str, state: CompanionState = CompanionState.THINKING, tool_name: str = "") -> None:
         self.cancel_countdown()
+        if state == CompanionState.THINKING and not text and not tool_name:
+            return
+        if state == CompanionState.THINKING and text:
+            self.show_stream(text)
+            return
         self.setMinimumHeight(72)
         self._set_mouse_passthrough(True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = state
+        self._fit_final_output = False
         self.main_layout.setContentsMargins(16, 12, 16, 12)
-        self.header.show()
-        if tool_name:
-            self.status_label.setText(f"Running: {tool_name}")
-        else:
-            self.status_label.setText("Thinking" if state == CompanionState.THINKING else "OSPilot")
+        self.header.hide()
+        self.status_label.setText("")
         self.label.setMaximumHeight(16777215)
+        self.label.setWordWrap(True)
+        if not text and tool_name:
+            text = f"Running {tool_name}..."
         self.label.setText(text)
-        self.label.show()
+        self.label.setVisible(bool(text))
         if state == CompanionState.THINKING:
             self.output.clear()
         self.output_frame.hide()
         self.input.setVisible(False)
         self._show_near_cursor()
 
-    def show_output(self, text: str, expanded: bool = False) -> None:
+    def begin_thinking(self) -> None:
         self.cancel_countdown()
-        self.setMinimumHeight(72)
+        self.setMinimumHeight(0)
+        self._set_mouse_passthrough(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.state = CompanionState.THINKING
+        self._expanded_output = False
+        self._fit_final_output = False
+        self.main_layout.setContentsMargins(12, 8, 30, 8)
+        self.header.hide()
+        self.status_label.setText("")
+        self.label.hide()
+        self.output.clear()
+        self.output_frame.show()
+        self.input.setVisible(False)
+        self._show_near_cursor(width=380)
+
+    def show_stream(self, text: str) -> None:
+        self.cancel_countdown()
+        self.setMinimumHeight(0)
+        if not self.output_frame.isVisible() or self.state != CompanionState.THINKING:
+            self.begin_thinking()
+        self.state = CompanionState.THINKING
+        self._fit_final_output = False
+        self.output.setPlainText(text)
+        self._show_near_cursor(width=380)
+
+    def show_output(self, text: str, expanded: bool = False, fit_to_content: bool = False) -> None:
+        self.cancel_countdown()
+        self.setMinimumHeight(0)
         self._set_mouse_passthrough(True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = CompanionState.OUTPUT
         self._expanded_output = expanded
+        self._fit_final_output = fit_to_content
         self.main_layout.setContentsMargins(12, 8, 30, 8)
         self.header.hide()
-        self.label.hide()
-        self._set_output_markdown(text)
-        self.output_frame.show()
+        if fit_to_content and _is_inline_final_output(text):
+            self.main_layout.setContentsMargins(16, 8, 30, 8)
+            self.label.setWordWrap(False)
+            self.label.setText(text)
+            self.label.show()
+            self.output.clear()
+            self.output_frame.hide()
+        else:
+            self.label.hide()
+            self._set_output_markdown(text)
+            self.output_frame.show()
         self.input.setVisible(False)
-        self._show_near_cursor(width=self._output_width(expanded))
+        self._show_near_cursor(width=self._output_width(text, expanded))
 
     def show_final_output(self, text: str) -> None:
-        self.show_output(text, expanded=True)
+        self.show_output(text, expanded=False, fit_to_content=True)
         self.start_countdown(text)
 
     def reset(self) -> None:
@@ -201,6 +245,7 @@ class CompanionBubble(QFrame):
         self.label.setMaximumHeight(16777215)
         self.status_label.setText("")
         self._expanded_output = False
+        self._fit_final_output = False
         self.header.show()
         self.label.show()
         self.main_layout.setContentsMargins(16, 12, 16, 12)
@@ -236,6 +281,8 @@ class CompanionBubble(QFrame):
         if self.output_frame.isVisible():
             self._fit_output_to_text(width)
         self.adjustSize()
+        if self.output_frame.isVisible():
+            self.resize(width, self.sizeHint().height())
         self._position_countdown_ring()
         target = self._position_near_cursor()
         allow_fullscreen_overlay(self, nonactivating=not accept_keyboard)
@@ -256,6 +303,9 @@ class CompanionBubble(QFrame):
             order_front(self)
 
     def _set_mouse_passthrough(self, enabled: bool) -> None:
+        if self._mouse_passthrough == enabled:
+            return
+        self._mouse_passthrough = enabled
         was_visible = self.isVisible()
         if was_visible:
             self.hide()
@@ -294,9 +344,13 @@ class CompanionBubble(QFrame):
         except AttributeError:
             self.output.setPlainText(text)
 
-    def _output_width(self, expanded: bool) -> int:
+    def _output_width(self, text: str, expanded: bool) -> int:
         if not expanded:
-            return 420
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            longest = max(lines, key=len, default=text)
+            metrics = self.label.fontMetrics() if self._fit_final_output and _is_inline_final_output(text) else self.output.fontMetrics()
+            text_width = metrics.horizontalAdvance(longest)
+            return max(140, min(420, text_width + 56))
         cursor = QCursor.pos()
         screen = QApplication.screenAt(cursor) or QApplication.primaryScreen()
         bounds = screen.availableGeometry() if screen else QApplication.primaryScreen().availableGeometry()
@@ -314,6 +368,13 @@ class CompanionBubble(QFrame):
             bounds = screen.availableGeometry() if screen else QApplication.primaryScreen().availableGeometry()
             max_text_height = max(row_height * 6, bounds.height() - 160)
             self.output.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        elif self._fit_final_output:
+            cursor = QCursor.pos()
+            screen = QApplication.screenAt(cursor) or QApplication.primaryScreen()
+            bounds = screen.availableGeometry() if screen else QApplication.primaryScreen().availableGeometry()
+            max_text_height = max(row_height + 8, bounds.height() - 160)
+            scrollbar_policy = Qt.ScrollBarPolicy.ScrollBarAsNeeded if document_height + 4 > max_text_height else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            self.output.setVerticalScrollBarPolicy(scrollbar_policy)
         else:
             max_text_height = row_height * 4 + 8
             self.output.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -355,3 +416,10 @@ class CompanionBubble(QFrame):
         painter.setBrush(QColor(32, 35, 45, 155))
         painter.setPen(QPen(QColor(255, 255, 255, 45), 1))
         painter.drawRoundedRect(rect, 20, 20)
+
+
+def _is_inline_final_output(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped or "\n" in stripped:
+        return False
+    return not any(marker in stripped for marker in ("`", "*", "_", "#", "[", "]", "<", ">"))
