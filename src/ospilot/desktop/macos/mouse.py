@@ -5,7 +5,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from .coordinates import Bounds, clamp_point, human_mouse_path, normalize_target
+from ospilot.desktop.common.coordinates import Bounds, clamp_point, human_mouse_path, normalize_target
 from .screenshot import get_last_screenshot_context
 
 

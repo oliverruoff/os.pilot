@@ -842,7 +842,6 @@ OSPilot/
         tray.py
         companion.py
         halo.py
-        shortcuts.py
 
       ipc/
         __init__.py
@@ -850,19 +849,40 @@ OSPilot/
         auth.py
         schemas.py
 
-      tools/
+      desktop/
         __init__.py
-        context.py
-        screenshot.py
-        mouse.py
-        keyboard.py
-        clipboard.py
-        shell.py
-        apps.py
-        coordinates.py
+        backend.py
+        registry.py
+        common/
+          clipboard.py
+          coordinates.py
+          shell.py
+        macos/
+          backend.py
+          context.py
+          screenshot.py
+          mouse.py
+          keyboard.py
+          apps.py
+          shortcuts.py
+          ui_elements.py
+          window.py
+        windows/
+          backend.py
+          context.py
+          screenshot.py
+          mouse.py
+          keyboard.py
+          apps.py
+          shortcuts.py
+          ui_elements.py
+          window.py
 
-  pi_extension/
-    ospilot-desktop-tools.ts
+  pi/
+    tools/
+      ospilot-desktop-tools.ts
+    skills/
+      README.md
 
   tests/
     test_pi_rpc.py

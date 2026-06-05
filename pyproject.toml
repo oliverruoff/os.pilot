@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ospilot"
 version = "0.1.0"
-description = "macOS cursor companion for pi-coding-agent"
+description = "Desktop cursor companion for pi-coding-agent"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

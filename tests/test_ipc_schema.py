@@ -3,7 +3,7 @@ import urllib.error
 import urllib.request
 
 from ospilot.ipc.server import IpcServer
-from ospilot.tools.registry import ToolRegistry
+from ospilot.desktop.registry import ToolRegistry
 
 
 def post(url: str, token: str, body: dict):

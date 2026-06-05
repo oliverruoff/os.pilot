@@ -7,7 +7,7 @@ from PySide6.QtCore import QPoint, QRectF, QTimer, Qt
 from PySide6.QtGui import QColor, QCursor, QPainter, QPen
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLineEdit, QLabel, QTextEdit, QVBoxLayout, QWidget
 
-from .macos_window import allow_fullscreen_overlay, order_front
+from ospilot.desktop.window import allow_fullscreen_overlay, order_front
 
 
 class CompanionState(StrEnum):
@@ -341,4 +341,3 @@ class CompanionBubble(QFrame):
         painter.setBrush(QColor(32, 35, 45, 155))
         painter.setPen(QPen(QColor(255, 255, 255, 45), 1))
         painter.drawRoundedRect(rect, 20, 20)
-

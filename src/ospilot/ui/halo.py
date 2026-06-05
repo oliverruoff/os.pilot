@@ -6,7 +6,7 @@ from PySide6.QtCore import QPointF, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor, QPainter, QRadialGradient
 from PySide6.QtWidgets import QWidget
 
-from .macos_window import allow_fullscreen_overlay
+from ospilot.desktop.window import allow_fullscreen_overlay
 
 
 class CursorHalo(QWidget):

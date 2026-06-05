@@ -5,7 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from ospilot.config import AppConfig
+from ospilot.core.config import AppConfig
 
 
 _LAST_SCREENSHOT_CONTEXT: dict | None = None

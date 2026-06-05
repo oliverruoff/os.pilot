@@ -1,8 +1,17 @@
 # OSPilot
 
-OSPilot is a macOS menu-bar/background cursor companion for `pi-coding-agent`.
+OSPilot is a macOS/Windows desktop cursor companion for `pi-coding-agent`.
 
-This repository contains the MVP scaffold from `SPEC.md`: a Python/PySide6 desktop shell, a JSON-RPC bridge to `pi`, a local authenticated IPC server for desktop tools, and a TypeScript pi extension.
+This repository contains a Python/PySide6 desktop shell, a JSON-RPC bridge to `pi`, a local authenticated IPC server for desktop tools, TypeScript pi tool extensions, and a drop-in pi skills folder.
+
+## Structure
+
+```text
+src/ospilot/desktop/macos/    macOS desktop implementation
+src/ospilot/desktop/windows/  Windows desktop stubs/implementation
+pi/tools/                     TypeScript pi tool extensions
+pi/skills/                    Referenced pi skills drop-in folder
+```
 
 ## Run
 

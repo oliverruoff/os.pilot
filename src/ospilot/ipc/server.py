@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from ospilot.tools.registry import ToolRegistry
+from ospilot.desktop.registry import ToolRegistry
 
 from .auth import make_token
 from .schemas import validate_tool_request

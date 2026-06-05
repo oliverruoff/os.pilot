@@ -25,7 +25,7 @@ def normalize_target(target: dict[str, Any], bounds: Bounds, screenshot_context:
         return bounds.x + bounds.width * x_float, bounds.y + bounds.height * y_float
 
     # If the model points at pixel coordinates from the last screenshot, convert
-    # them back into macOS logical display coordinates. This matters on Retina
+    # them back into logical display coordinates. This matters on Retina/high-DPI
     # and avoids several-centimeter misses when screenshot pixels != display pts.
     converted = screenshot_pixel_to_display_point(x_float, y_float, screenshot_context)
     if converted is not None:

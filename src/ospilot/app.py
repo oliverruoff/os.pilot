@@ -1,24 +1,21 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
 import sys
 import threading
 from concurrent.futures import CancelledError
-from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtWidgets import QApplication
 
-from ospilot.config import load_config
+from ospilot.core.config import load_config
+from ospilot.core.logging import setup_logging
+from ospilot.desktop import create_desktop_backend
+from ospilot.desktop.registry import build_default_registry
 from ospilot.ipc import IpcServer
-from ospilot.logging import setup_logging
 from ospilot.pi.events import event_text
 from ospilot.pi.runtime import PiRuntime
-from ospilot.tools.mouse import MouseController
-from ospilot.tools.registry import build_default_registry
-from ospilot.ui import CompanionBubble, CompanionState, CursorHalo, GlobalShortcuts, TrayController
-from ospilot.ui.macos_window import configure_background_app
+from ospilot.ui import CompanionBubble, CompanionState, CursorHalo, TrayController
 
 
 class UiDispatch(QObject):
@@ -35,7 +32,8 @@ class OSPilotApp:
         self.config = load_config()
         self.logger = setup_logging(self.config)
         self.qt = QApplication(sys.argv)
-        configure_background_app()
+        self.desktop = create_desktop_backend(self.config)
+        self.desktop.configure_background_app()
         self.qt.setQuitOnLastWindowClosed(False)
         self.loop = asyncio.new_event_loop()
         threading.Thread(target=self.loop.run_forever, daemon=True).start()
@@ -56,17 +54,15 @@ class OSPilotApp:
         self.ui_dispatch.companion_message.connect(self.companion.show_output)
         self.ui_dispatch.overlay_visibility.connect(self._apply_overlay_visibility)
         self.halo = CursorHalo()
-        self.mouse = MouseController()
-        self.registry = build_default_registry(self.config, self.mouse, self._emit_companion_message, self._emit_local_tool_state, self._set_screenshot_overlay_visibility)
+        self.registry = build_default_registry(self.config, self.desktop, self._emit_companion_message, self._emit_local_tool_state, self._set_screenshot_overlay_visibility)
         self.ipc = IpcServer(self.registry)
         self.runtime = PiRuntime(self.config)
         self.runtime.rpc.add_event_handler(self._on_pi_event)
         self.tray = TrayController(self.open_chat, self.open_voice, self.new_session, self.stop, self.quit)
-        self.shortcuts = GlobalShortcuts(self.companion, self.open_chat, self.open_voice, self.stop)
+        self.shortcuts = self.desktop.create_global_shortcuts(self.companion, self.open_chat, self.open_voice, self.stop)
         self.logger.info("shortcut backend=%s", self.shortcuts.backend)
 
     def run(self) -> int:
-        self._install_extension()
         self.ipc.start()
         self.tray.show()
         self._schedule(self._start_runtime(), "start pi")
@@ -115,7 +111,7 @@ class OSPilotApp:
         self.logger.info("stop")
         self._active_prompt = False
         self._watchdog.stop()
-        self.mouse.stop()
+        self.desktop.stop()
         self.halo.hide_halo()
         self.companion.reset()
         self._schedule(self.runtime.abort(), "abort")
@@ -254,12 +250,6 @@ class OSPilotApp:
         error_message = str(error) or type(error).__name__
         self.logger.error("%s failed: %s", label, error_message)
         self.ui_dispatch.error.emit(f"{label} failed: {error_message}")
-
-    def _install_extension(self) -> None:
-        source = Path(__file__).resolve().parents[2] / "pi_extension" / "ospilot-desktop-tools.ts"
-        target = self.config.paths.pi_extensions / "ospilot-desktop-tools.ts"
-        if source.exists():
-            shutil.copyfile(source, target)
 
 
 def main() -> int:

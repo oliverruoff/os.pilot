@@ -1,4 +1,4 @@
-from ospilot.tools.coordinates import Bounds, clamp_point, ease_in_out_cubic, human_mouse_path, normalize_target, screenshot_pixel_to_display_point
+from ospilot.desktop.common.coordinates import Bounds, clamp_point, ease_in_out_cubic, human_mouse_path, normalize_target, screenshot_pixel_to_display_point
 
 
 def test_normalized_target_maps_to_monitor_bounds() -> None:

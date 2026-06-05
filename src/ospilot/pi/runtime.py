@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ospilot.config import AppConfig, pi_environment
+from ospilot.core.config import AppConfig, pi_environment
 
 from .rpc import PiRpcClient
 
@@ -22,9 +22,12 @@ class PiRuntime:
 
     def command(self) -> list[str]:
         command = [self.config.pi.executable, "--mode", "rpc", "--session-dir", str(self.config.paths.pi_sessions)]
-        extension = self.config.paths.pi_extensions / "ospilot-desktop-tools.ts"
+        extension = self.config.paths.pi_desktop_tools_extension
         if extension.exists():
             command.extend(["--extension", str(extension)])
+        skills = self.config.paths.pi_skills_source
+        if skills.exists():
+            command.extend(["--skill", str(skills)])
         command.extend(self.config.pi.args)
         return command
 
