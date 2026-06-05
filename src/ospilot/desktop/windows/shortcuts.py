@@ -2,20 +2,42 @@ from __future__ import annotations
 
 import threading
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QApplication
 
 
-class GlobalShortcuts:
+HOTKEYS = {
+    "<alt_gr>+.": "open_chat",
+    "<alt_gr>+,": "open_voice",
+    "<alt_gr>+<": "stop",
+    "<ctrl>+<alt>+.": "open_chat",
+    "<ctrl>+<alt>+,": "open_voice",
+    "<ctrl>+<alt>+<": "stop",
+}
+
+
+class GlobalShortcuts(QObject):
+    triggered = Signal(str)
+
     def __init__(self, parent, open_chat, open_voice, stop) -> None:
+        super().__init__(parent)
         self.shortcuts: list[QShortcut] = []
         self.listener = None
         self.backend = "none"
+        callbacks = {
+            "open_chat": open_chat,
+            "open_voice": open_voice,
+            "stop": stop,
+        }
+        self.triggered.connect(lambda name: callbacks[name]())
         if self._start_global_hotkeys(open_chat, open_voice, stop):
             self.backend = "pynput"
         else:
             self.backend = "qt"
+            self._add("AltGr+.", open_chat, parent)
+            self._add("AltGr+,", open_voice, parent)
+            self._add("AltGr+<", stop, parent)
             self._add("Ctrl+Alt+.", open_chat, parent)
             self._add("Ctrl+Alt+,", open_voice, parent)
             self._add("Ctrl+Alt+<", stop, parent)
@@ -26,15 +48,11 @@ class GlobalShortcuts:
         except Exception:
             return False
 
-        def dispatch(callback) -> None:
-            QTimer.singleShot(0, callback)
-
         try:
             self.listener = keyboard.GlobalHotKeys(
                 {
-                    "<ctrl>+<alt>+.": lambda: dispatch(open_chat),
-                    "<ctrl>+<alt>+,": lambda: dispatch(open_voice),
-                    "<ctrl>+<alt>+<": lambda: dispatch(stop),
+                    key: lambda name=name: self.triggered.emit(name)
+                    for key, name in HOTKEYS.items()
                 }
             )
             threading.Thread(target=self.listener.run, daemon=True).start()

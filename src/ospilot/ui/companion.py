@@ -7,7 +7,7 @@ from PySide6.QtCore import QPoint, QRectF, QTimer, Qt
 from PySide6.QtGui import QColor, QCursor, QPainter, QPen
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLineEdit, QLabel, QTextEdit, QVBoxLayout, QWidget
 
-from ospilot.desktop.window import allow_fullscreen_overlay, order_front
+from ospilot.desktop.window import allow_fullscreen_overlay, focus_widget, order_front
 
 
 class CompanionState(StrEnum):
@@ -136,7 +136,8 @@ class CompanionBubble(QFrame):
         self.input.setPlaceholderText("Ask pi...")
         self.input.setVisible(True)
         self._show_near_cursor(accept_keyboard=True)
-        self.input.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        self._focus_input()
+        QTimer.singleShot(50, self._focus_input)
 
     def show_voice_placeholder(self) -> None:
         self.cancel_countdown()
@@ -300,12 +301,18 @@ class CompanionBubble(QFrame):
         self.raise_()
         if accept_keyboard:
             order_front(self, make_key=True)
-            QApplication.setActiveWindow(self)
-            self.activateWindow()
-            self.input.activateWindow()
-            self.input.setFocus(Qt.FocusReason.ShortcutFocusReason)
+            self._focus_input()
         else:
             order_front(self)
+
+    def _focus_input(self) -> None:
+        order_front(self, make_key=True)
+        QApplication.setActiveWindow(self)
+        self.raise_()
+        self.activateWindow()
+        self.input.activateWindow()
+        self.input.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        focus_widget(self.input)
 
     def _set_mouse_passthrough(self, enabled: bool) -> None:
         if self._mouse_passthrough == enabled:

@@ -21,7 +21,7 @@ def test_pi_environment_sets_session_dir(tmp_path: Path) -> None:
 
     env = pi_environment(config, {"EXTRA": "1"})
 
-    assert env["PI_CODING_AGENT_SESSION_DIR"].endswith("OSPilot/pi-sessions")
+    assert Path(env["PI_CODING_AGENT_SESSION_DIR"]).parts[-2:] == ("OSPilot", "pi-sessions")
     assert env["EXTRA"] == "1"
 
 

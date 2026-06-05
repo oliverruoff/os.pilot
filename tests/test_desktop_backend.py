@@ -54,3 +54,10 @@ def test_windows_keyboard_normalizes_cross_platform_aliases() -> None:
     assert _normalize_key("option") == "alt"
     assert _normalize_key("control") == "ctrl"
     assert _normalize_key("AltGr") == "alt_gr"
+
+
+def test_windows_shortcuts_register_altgr_hotkeys() -> None:
+    from ospilot.desktop.windows.shortcuts import HOTKEYS
+
+    assert HOTKEYS["<alt_gr>+."] == "open_chat"
+    assert HOTKEYS["<ctrl>+<alt>+."] == "open_chat"

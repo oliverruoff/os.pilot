@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import subprocess
+import sys
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -88,6 +90,7 @@ class PiRpcClient:
             stderr=asyncio.subprocess.PIPE,
             env=env,
             limit=RPC_STREAM_LIMIT,
+            **_subprocess_startup_kwargs(),
         )
         self._reader_task = asyncio.create_task(self._read_stdout())
         asyncio.create_task(self._read_stderr())
@@ -192,3 +195,9 @@ class PiRpcClient:
             result = handler(event)
             if asyncio.iscoroutine(result):
                 await result
+
+
+def _subprocess_startup_kwargs() -> dict[str, int]:
+    if sys.platform != "win32":
+        return {}
+    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}

@@ -75,3 +75,21 @@ def order_front(widget, make_key: bool = False) -> None:
             user32.SetForegroundWindow(hwnd)
     except Exception:
         return
+
+
+def focus_widget(widget) -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        hwnd = int(widget.winId())
+        user32 = ctypes.windll.user32
+        user32.SetFocus.argtypes = [wintypes.HWND]
+        user32.SetFocus.restype = wintypes.HWND
+        user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+        user32.SetForegroundWindow.restype = wintypes.BOOL
+        user32.SetForegroundWindow(hwnd)
+        user32.SetFocus(hwnd)
+    except Exception:
+        return

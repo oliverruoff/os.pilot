@@ -1,7 +1,7 @@
 import asyncio
 
 from ospilot.pi.events import PiEvent, event_text, event_thinking_text, final_answer_text
-from ospilot.pi.rpc import JsonRpcMessage, PiRpcClient, PiRpcCommand
+from ospilot.pi.rpc import JsonRpcMessage, PiRpcClient, PiRpcCommand, _subprocess_startup_kwargs
 
 
 def test_json_rpc_message_serializes_minimal_request() -> None:
@@ -103,3 +103,11 @@ def test_final_answer_text_strips_multiple_leaked_reasoning_sentences() -> None:
     text = "The user asked if this is done. I should answer directly. Yes."
 
     assert final_answer_text(text) == "Yes."
+
+
+def test_subprocess_startup_kwargs_hide_windows_console(monkeypatch) -> None:
+    import subprocess
+
+    monkeypatch.setattr("sys.platform", "win32")
+
+    assert _subprocess_startup_kwargs() == {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}

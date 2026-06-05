@@ -22,7 +22,7 @@ dev = [
   "pytest>=8.0",
 ]
 
-[project.scripts]
+[project.gui-scripts]
 ospilot = "ospilot.app:main"
 
 [tool.hatch.build.targets.wheel]
