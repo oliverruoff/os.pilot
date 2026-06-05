@@ -68,10 +68,21 @@ def event_text(event: PiEvent) -> str:
         if isinstance(content, list):
             parts = []
             for item in content:
-                if isinstance(item, dict) and isinstance(item.get("text"), str):
+                if isinstance(item, dict) and _is_final_text_part(item) and isinstance(item.get("text"), str):
                     parts.append(item["text"])
             return "".join(parts)
     return ""
+
+
+def _is_final_text_part(item: dict[str, Any]) -> bool:
+    for key in ("type", "name", "kind"):
+        value = item.get(key)
+        if not isinstance(value, str):
+            continue
+        normalized = value.lower()
+        if any(marker in normalized for marker in ("reasoning", "thinking", "thought")):
+            return False
+    return True
 
 
 def tool_name_from_event(event: PiEvent) -> str | None:

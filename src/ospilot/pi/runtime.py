@@ -8,9 +8,9 @@ from .rpc import PiRpcClient
 
 
 OSPILOT_FAST_TOOL_HINT = """OSPilot visual-grounding hint:
-- When the user asks where a named UI control/setting/button is, or asks to click one, first call ospilot_get_frontmost_ui_elements with a short query. Use the returned exact center coordinates for ospilot_move_mouse or ospilot_click; this is faster and more precise than visual guessing.
+- When the user asks where a named UI control/setting/button is, or asks to click one, first call ospilot_get_frontmost_ui_elements with a short query. Use the returned exact center coordinates for ospilot_move_mouse or ospilot_click with coordinate_space="display_point"; this is faster and more precise than visual guessing.
 - Only call ospilot_capture_screenshot_current_mouse_monitor when Accessibility cannot identify the target or the target is purely visual. Inspect screenshot metadata, especially mouse_position, monitor_bounds, screenshot_size, and scale_factor.
-- After locating the requested item, choose the exact center of the relevant UI element/icon/label and call ospilot_move_mouse. For screenshot-based targets, prefer normalized coordinates relative to the screenshot/monitor; exact screenshot pixel coordinates from the latest screenshot are also accepted and converted precisely.
+- After locating the requested item, choose the exact center of the relevant UI element/icon/label and call ospilot_move_mouse. For screenshot-based targets, prefer normalized coordinates relative to the screenshot/monitor; if using exact screenshot pixel coordinates from the latest screenshot, set coordinate_space="screenshot_pixel".
 - Do not click for \"where is ...\" / \"show me ...\" requests unless the user explicitly asks to click or open it.
 """
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import threading
 import time
 from typing import Any, Callable
@@ -58,24 +59,39 @@ class MouseController:
             return {"ok": True, "tool": "ospilot_move_mouse", "target": {"x": end_x, "y": end_y}, "metadata": {"duration_ms": round(duration * 1000), "steps": steps, "profile": "human_bezier", "final_error_px": round(final_error_px, 2)}}
 
     def click(self, target: dict[str, Any] | None = None, double: bool = False) -> dict:
+        return self._click(target, button="left", double=double)
+
+    def right_click(self, target: dict[str, Any] | None = None) -> dict:
+        return self._click(target, button="right", double=False)
+
+    def _click(self, target: dict[str, Any] | None = None, button: str = "left", double: bool = False) -> dict:
+        tool = _click_tool(button, double)
         if target:
             moved = self.move_mouse(target, 90)
             if not moved.get("ok"):
                 return moved
+            time.sleep(0.06)
         try:
             import Quartz
 
+            source = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
             pos = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
-            event_type_down = Quartz.kCGEventLeftMouseDown
-            event_type_up = Quartz.kCGEventLeftMouseUp
-            for _ in range(2 if double else 1):
-                down = Quartz.CGEventCreateMouseEvent(None, event_type_down, (pos.x, pos.y), Quartz.kCGMouseButtonLeft)
-                up = Quartz.CGEventCreateMouseEvent(None, event_type_up, (pos.x, pos.y), Quartz.kCGMouseButtonLeft)
-                Quartz.CGEventPost(Quartz.kCGHIDEventTap, down)
-                Quartz.CGEventPost(Quartz.kCGHIDEventTap, up)
-            return {"ok": True, "tool": "ospilot_double_click" if double else "ospilot_click"}
+            _activate_app_at_point(Quartz, pos.x, pos.y)
+            event_type_down, event_type_up, quartz_button = _quartz_button_events(Quartz, button)
+            for index in range(2 if double else 1):
+                click_state = index + 1 if double else 1
+                down = Quartz.CGEventCreateMouseEvent(source, event_type_down, (pos.x, pos.y), quartz_button)
+                up = Quartz.CGEventCreateMouseEvent(source, event_type_up, (pos.x, pos.y), quartz_button)
+                Quartz.CGEventSetIntegerValueField(down, Quartz.kCGMouseEventClickState, click_state)
+                Quartz.CGEventSetIntegerValueField(up, Quartz.kCGMouseEventClickState, click_state)
+                _post_mouse_event(Quartz, down)
+                time.sleep(0.045)
+                _post_mouse_event(Quartz, up)
+                if double and index == 0:
+                    time.sleep(0.06)
+            return {"ok": True, "tool": tool, "target": {"x": pos.x, "y": pos.y}, "metadata": {"event_tap": "hid", "button": button}}
         except Exception as exc:
-            return {"ok": False, "tool": "ospilot_double_click" if double else "ospilot_click", "error": str(exc)}
+            return {"ok": False, "tool": tool, "error": str(exc)}
 
 
 def _display_for_point(Quartz, x: float, y: float):
@@ -90,3 +106,59 @@ def _display_for_point(Quartz, x: float, y: float):
         display_id = displays[0]
         return display_id, Quartz.CGDisplayBounds(display_id)
     return None, None
+
+
+def _click_tool(button: str, double: bool) -> str:
+    if button == "right":
+        return "ospilot_right_click"
+    return "ospilot_double_click" if double else "ospilot_click"
+
+
+def _quartz_button_events(Quartz, button: str):
+    if button == "right":
+        return Quartz.kCGEventRightMouseDown, Quartz.kCGEventRightMouseUp, Quartz.kCGMouseButtonRight
+    return Quartz.kCGEventLeftMouseDown, Quartz.kCGEventLeftMouseUp, Quartz.kCGMouseButtonLeft
+
+
+def _post_mouse_event(Quartz, event) -> None:
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
+
+
+def _activate_app_at_point(Quartz, x: float, y: float) -> None:
+    pid = _pid_at_point(Quartz, x, y)
+    if pid is None or pid == os.getpid():
+        return
+    try:
+        from AppKit import NSApplicationActivateIgnoringOtherApps, NSRunningApplication
+
+        app = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+        if app is not None:
+            app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+            time.sleep(0.12)
+    except Exception:
+        return
+
+
+def _pid_at_point(Quartz, x: float, y: float) -> int | None:
+    try:
+        windows = Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID) or []
+    except Exception:
+        return None
+
+    for window in windows:
+        try:
+            if int(window.get("kCGWindowLayer", 0)) != 0:
+                continue
+            pid = int(window.get("kCGWindowOwnerPID", 0))
+            if not pid or pid == os.getpid():
+                continue
+            bounds = window.get("kCGWindowBounds") or {}
+            wx = float(bounds.get("X", 0))
+            wy = float(bounds.get("Y", 0))
+            ww = float(bounds.get("Width", 0))
+            wh = float(bounds.get("Height", 0))
+            if wx <= x <= wx + ww and wy <= y <= wy + wh:
+                return pid
+        except Exception:
+            continue
+    return None

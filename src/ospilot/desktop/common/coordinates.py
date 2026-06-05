@@ -21,6 +21,14 @@ def normalize_target(target: dict[str, Any], bounds: Bounds, screenshot_context:
         raise ValueError("target requires numeric x and y")
     x_float = float(x)
     y_float = float(y)
+    coordinate_space = str(target.get("coordinate_space", "")).strip()
+    if coordinate_space == "display_point":
+        return x_float, y_float
+    if coordinate_space == "screenshot_pixel":
+        converted = screenshot_pixel_to_display_point(x_float, y_float, screenshot_context)
+        if converted is None:
+            raise ValueError("screenshot_pixel target requires a recent screenshot context")
+        return converted
     if 0 <= x_float <= 1 and 0 <= y_float <= 1:
         return bounds.x + bounds.width * x_float, bounds.y + bounds.height * y_float
 

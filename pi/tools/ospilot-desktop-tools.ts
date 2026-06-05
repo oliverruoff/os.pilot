@@ -39,8 +39,9 @@ const commonProperties = {
     type: "object" as const,
     description: "Target coordinates. Prefer normalized coordinates {x: 0.5, y: 0.5} relative to the screenshot/monitor. You may also pass screenshot pixel coordinates from the latest screenshot; OSPilot converts them to display coordinates precisely.",
     properties: {
-      x: { type: "number" as const, description: "X coordinate. Use 0-1 normalized relative to the screenshot/monitor, or an x pixel coordinate from the latest screenshot." },
-      y: { type: "number" as const, description: "Y coordinate. Use 0-1 normalized relative to the screenshot/monitor, or a y pixel coordinate from the latest screenshot." },
+      x: { type: "number" as const, description: "X coordinate. Use 0-1 normalized relative to the monitor, an Accessibility display point, or a pixel coordinate from the latest screenshot." },
+      y: { type: "number" as const, description: "Y coordinate. Use 0-1 normalized relative to the monitor, an Accessibility display point, or a pixel coordinate from the latest screenshot." },
+      coordinate_space: { type: "string" as const, enum: ["normalized", "display_point", "screenshot_pixel"] as const, description: "Optional coordinate type. Use display_point for Accessibility centers; use screenshot_pixel for pixel coordinates from the latest screenshot; omit for normalized 0-1 coordinates." },
     },
     required: ["x", "y"] as const,
   },
@@ -119,18 +120,6 @@ const tools = [
     },
   },
   {
-    name: "ospilot_run_shell_command",
-    description: "Run a local shell command.",
-    parameters: {
-      type: "object" as const,
-      properties: {
-        command: { type: "string" as const, description: "Shell command to execute." },
-        cwd: { type: "string" as const, description: "Optional working directory." },
-      },
-      required: ["command"],
-    },
-  },
-  {
     name: "ospilot_click",
     description: "Click at current pointer position or move to target first. For named UI controls, first use ospilot_get_frontmost_ui_elements and pass the returned exact center coordinates. Use without target to click at current position.",
     parameters: {
@@ -139,6 +128,19 @@ const tools = [
         target: {
           ...commonProperties.target,
           description: "Optional target coordinates. If omitted, clicks at current mouse position.",
+        },
+      },
+    },
+  },
+  {
+    name: "ospilot_right_click",
+    description: "Right-click at current pointer position or move to target first. Use without target to right-click at current position.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        target: {
+          ...commonProperties.target,
+          description: "Optional target coordinates. If omitted, right-clicks at current mouse position.",
         },
       },
     },

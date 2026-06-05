@@ -1,5 +1,6 @@
 import asyncio
 
+from ospilot.pi.events import PiEvent, event_text
 from ospilot.pi.rpc import JsonRpcMessage, PiRpcClient, PiRpcCommand
 
 
@@ -36,3 +37,21 @@ def test_route_message_dispatches_events() -> None:
         assert events[0].payload["text"] == "hello"
 
     asyncio.run(run())
+
+
+def test_event_text_ignores_reasoning_content_parts() -> None:
+    event = PiEvent(
+        type="message_end",
+        payload={
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "reasoning", "text": "hidden thought"},
+                    {"type": "text", "text": "final answer"},
+                    {"kind": "thinking", "text": "hidden thinking"},
+                ],
+            }
+        },
+    )
+
+    assert event_text(event) == "final answer"

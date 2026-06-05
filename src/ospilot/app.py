@@ -145,19 +145,17 @@ class OSPilotApp:
         elif event_type == "message_update" and text and self._message_role != "user":
             self._stream_buffer = self._merge_stream_text(self._stream_buffer, text)
             self._last_output = self._stream_buffer
-            self.companion.show_output(self._stream_buffer)
         elif event_type == "message_end" and text and role != "user":
             if not self._stream_buffer or len(text) > len(self._stream_buffer):
                 self._stream_buffer = text
             self._last_output = self._stream_buffer
-            self.companion.show_output(self._stream_buffer)
         elif event_type == "tool_execution_start":
             self.companion.show_status(text or f"Running {tool_name}...", CompanionState.TOOL_RUNNING, tool_name)
         elif event_type == "tool_execution_update":
             self.companion.show_status(text or f"Running {tool_name}...", CompanionState.TOOL_RUNNING, tool_name)
         elif event_type == "tool_execution_end":
             if self._last_output:
-                self.companion.show_output(self._last_output)
+                self.companion.show_status("Thinking...", CompanionState.THINKING)
             else:
                 self.companion.show_status(text or "Tool finished", CompanionState.TOOL_RUNNING, tool_name)
         elif event_type in {"agent_end", "auto_retry_end"}:

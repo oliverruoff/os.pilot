@@ -4,7 +4,6 @@ from typing import Any
 
 from ospilot.core.config import AppConfig
 from ospilot.desktop.common.clipboard import read_clipboard, write_clipboard
-from ospilot.desktop.common.shell import run_shell_command
 
 from .apps import open_app
 from .context import get_active_context
@@ -47,6 +46,9 @@ class MacOSDesktopBackend:
     def click(self, target: dict[str, Any] | None = None, double: bool = False) -> dict[str, Any]:
         return self.mouse.click(target, double)
 
+    def right_click(self, target: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self.mouse.right_click(target)
+
     def press_hotkey(self, keys: list[str]) -> dict[str, Any]:
         return press_hotkey(keys)
 
@@ -61,6 +63,3 @@ class MacOSDesktopBackend:
 
     def write_clipboard(self, text: str) -> dict[str, Any]:
         return write_clipboard(text)
-
-    def run_shell_command(self, command: str, cwd: str | None = None) -> dict[str, Any]:
-        return run_shell_command(command, cwd)

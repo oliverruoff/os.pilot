@@ -108,6 +108,7 @@ class CompanionBubble(QFrame):
     def show_chat(self, on_submit) -> None:
         self.cancel_countdown()
         self.setMinimumHeight(72)
+        self._set_mouse_passthrough(False)
         if self.isVisible() and self.state != CompanionState.CHAT_INPUT:
             # Re-show the bubble when switching from passive output/status mode
             # to input mode. On macOS a window previously shown as
@@ -138,6 +139,7 @@ class CompanionBubble(QFrame):
     def show_voice_placeholder(self) -> None:
         self.cancel_countdown()
         self.setMinimumHeight(72)
+        self._set_mouse_passthrough(True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = CompanionState.VOICE_INPUT
         self.main_layout.setContentsMargins(16, 12, 16, 12)
@@ -153,6 +155,7 @@ class CompanionBubble(QFrame):
     def show_status(self, text: str, state: CompanionState = CompanionState.THINKING, tool_name: str = "") -> None:
         self.cancel_countdown()
         self.setMinimumHeight(72)
+        self._set_mouse_passthrough(True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = state
         self.main_layout.setContentsMargins(16, 12, 16, 12)
@@ -173,6 +176,7 @@ class CompanionBubble(QFrame):
     def show_output(self, text: str, expanded: bool = False) -> None:
         self.cancel_countdown()
         self.setMinimumHeight(72)
+        self._set_mouse_passthrough(True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = CompanionState.OUTPUT
         self._expanded_output = expanded
@@ -190,6 +194,7 @@ class CompanionBubble(QFrame):
 
     def reset(self) -> None:
         self.setMinimumHeight(72)
+        self._set_mouse_passthrough(False)
         self.state = CompanionState.HIDDEN
         self.input.clear()
         self.output.clear()
@@ -249,6 +254,15 @@ class CompanionBubble(QFrame):
             self.input.setFocus(Qt.FocusReason.ShortcutFocusReason)
         else:
             order_front(self)
+
+    def _set_mouse_passthrough(self, enabled: bool) -> None:
+        was_visible = self.isVisible()
+        if was_visible:
+            self.hide()
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, enabled)
+        self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, enabled)
+        if was_visible:
+            self.show()
 
     def _follow_cursor(self) -> None:
         if not self.isVisible():

@@ -37,29 +37,29 @@ def build_default_registry(
 ) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register("ospilot_get_active_context", lambda payload: desktop.get_active_context())
-    registry.register("ospilot_capture_screenshot_current_mouse_monitor", lambda payload: _capture_without_overlay(config, desktop, screenshot_visibility))
+    registry.register("ospilot_capture_screenshot_current_mouse_monitor", lambda payload: _without_overlay(screenshot_visibility, lambda: desktop.capture_screenshot_current_mouse_monitor(config)))
     registry.register("ospilot_get_frontmost_ui_elements", lambda payload: desktop.get_frontmost_ui_elements(str(payload.get("query", "")), int(payload.get("limit", 120))))
     registry.register("ospilot_show_companion_message", lambda payload: _show_message(show_message, str(payload.get("text", ""))))
     registry.register("ospilot_move_mouse", lambda payload: _with_tool_state(tool_state, "ospilot_move_mouse", lambda: desktop.move_mouse(payload.get("target", {}), payload.get("duration_ms"))))
     registry.register("ospilot_press_hotkey", lambda payload: desktop.press_hotkey(list(payload.get("keys", []))))
     registry.register("ospilot_read_clipboard", lambda payload: desktop.read_clipboard())
     registry.register("ospilot_write_clipboard", lambda payload: desktop.write_clipboard(str(payload.get("text", ""))))
-    registry.register("ospilot_run_shell_command", lambda payload: desktop.run_shell_command(str(payload.get("command", "")), payload.get("cwd")))
-    registry.register("ospilot_click", lambda payload: desktop.click(payload.get("target"), False))
-    registry.register("ospilot_double_click", lambda payload: desktop.click(payload.get("target"), True))
+    registry.register("ospilot_click", lambda payload: _without_overlay(screenshot_visibility, lambda: desktop.click(payload.get("target"), False)))
+    registry.register("ospilot_right_click", lambda payload: _without_overlay(screenshot_visibility, lambda: desktop.right_click(payload.get("target"))))
+    registry.register("ospilot_double_click", lambda payload: _without_overlay(screenshot_visibility, lambda: desktop.click(payload.get("target"), True)))
     registry.register("ospilot_type_text", lambda payload: desktop.type_text(str(payload.get("text", ""))))
     registry.register("ospilot_open_app", lambda payload: desktop.open_app(str(payload.get("app_name", ""))))
     return registry
 
 
-def _capture_without_overlay(config: AppConfig, desktop: DesktopBackend, screenshot_visibility: Callable[[bool], None] | None) -> dict[str, Any]:
+def _without_overlay(screenshot_visibility: Callable[[bool], None] | None, action: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     if screenshot_visibility:
         screenshot_visibility(False)
-        # Give the OS one frame to remove OSPilot's overlay before capture runs,
-        # so pi never sees/responds to its own bubble.
+        # Give the OS one frame to remove OSPilot's overlay before the desktop action,
+        # so screenshots and clicks do not hit/respond to OSPilot's own bubble.
         time.sleep(0.15)
     try:
-        return desktop.capture_screenshot_current_mouse_monitor(config)
+        return action()
     finally:
         if screenshot_visibility:
             screenshot_visibility(True)
