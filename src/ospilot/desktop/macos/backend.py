@@ -6,7 +6,7 @@ from ospilot.core.config import AppConfig
 from ospilot.desktop.common.clipboard import read_clipboard, write_clipboard
 
 from .apps import open_app
-from .context import get_active_context
+from .context import focus_app, get_active_context
 from .keyboard import press_hotkey, type_text
 from .mouse import MouseController
 from .screenshot import capture_screenshot_current_mouse_monitor
@@ -54,6 +54,9 @@ class MacOSDesktopBackend:
 
     def type_text(self, text: str) -> dict[str, Any]:
         return type_text(text)
+
+    def focus_app(self, pid: int) -> dict[str, Any]:
+        return focus_app(pid)
 
     def open_app(self, app_name: str) -> dict[str, Any]:
         return open_app(app_name)

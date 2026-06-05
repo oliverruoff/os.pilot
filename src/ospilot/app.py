@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import threading
 from concurrent.futures import CancelledError
@@ -47,6 +48,7 @@ class OSPilotApp:
         self._last_output = ""
         self._message_role = ""
         self._active_prompt = False
+        self._desktop_input_app_pid: int | None = None
         self._watchdog = QTimer()
         self._watchdog.setSingleShot(True)
         self._watchdog.timeout.connect(self._handle_prompt_timeout)
@@ -55,7 +57,7 @@ class OSPilotApp:
         self.ui_dispatch.companion_message.connect(self.companion.show_output)
         self.ui_dispatch.overlay_visibility.connect(self._apply_overlay_visibility)
         self.halo = CursorHalo()
-        self.registry = build_default_registry(self.config, self.desktop, self._emit_companion_message, self._emit_local_tool_state, self._set_screenshot_overlay_visibility)
+        self.registry = build_default_registry(self.config, self.desktop, self._emit_companion_message, self._emit_local_tool_state, self._set_screenshot_overlay_visibility, self._prepare_desktop_input)
         self.ipc = IpcServer(self.registry)
         self.runtime = PiRuntime(self.config)
         self.runtime.rpc.add_event_handler(self._on_pi_event)
@@ -80,6 +82,7 @@ class OSPilotApp:
 
     def open_chat(self) -> None:
         self.logger.info("open_chat")
+        self._remember_desktop_input_target()
         self.companion.show_chat(self.submit_prompt)
 
     def open_voice(self) -> None:
@@ -91,6 +94,8 @@ class OSPilotApp:
         self.logger.info("submit_prompt length=%s", len(text))
         if not text:
             return
+        if self._desktop_input_app_pid is None:
+            self._remember_desktop_input_target()
         self.companion.input.clear()
         if text == "/new":
             self.new_session()
@@ -212,6 +217,24 @@ class OSPilotApp:
                 self.companion.hide()
         finally:
             done.set()
+
+    def _remember_desktop_input_target(self) -> None:
+        context = self.desktop.get_active_context()
+        app = context.get("frontmost_app") if isinstance(context, dict) else None
+        if not isinstance(app, dict):
+            return
+        pid = app.get("pid")
+        if not isinstance(pid, int) or pid <= 0 or pid == os.getpid() or app.get("is_self"):
+            return
+        self._desktop_input_app_pid = pid
+        self.logger.info("desktop input target app=%s pid=%s", app.get("name") or "", pid)
+
+    def _prepare_desktop_input(self) -> None:
+        if not self._desktop_input_app_pid:
+            return
+        result = self.desktop.focus_app(self._desktop_input_app_pid)
+        if not result.get("ok"):
+            self.logger.info("focus desktop input target failed: %s", result.get("error") or result)
 
     def _apply_local_tool_state(self, name: str, state: str) -> None:
         if name == "ospilot_move_mouse":

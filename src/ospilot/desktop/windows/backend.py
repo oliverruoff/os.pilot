@@ -52,6 +52,9 @@ class WindowsDesktopBackend:
     def type_text(self, text: str) -> dict[str, Any]:
         return _not_implemented("ospilot_type_text")
 
+    def focus_app(self, pid: int) -> dict[str, Any]:
+        return _not_implemented("ospilot_focus_app")
+
     def open_app(self, app_name: str) -> dict[str, Any]:
         return _not_implemented("ospilot_open_app")
 

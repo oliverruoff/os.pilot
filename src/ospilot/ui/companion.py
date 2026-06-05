@@ -142,6 +142,7 @@ class CompanionBubble(QFrame):
         self.cancel_countdown()
         self.setMinimumHeight(72)
         self._set_mouse_passthrough(True)
+        self._relinquish_keyboard_focus()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = CompanionState.VOICE_INPUT
         self.main_layout.setContentsMargins(16, 12, 16, 12)
@@ -163,6 +164,7 @@ class CompanionBubble(QFrame):
             return
         self.setMinimumHeight(72)
         self._set_mouse_passthrough(True)
+        self._relinquish_keyboard_focus()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = state
         self._fit_final_output = False
@@ -185,6 +187,7 @@ class CompanionBubble(QFrame):
         self.cancel_countdown()
         self.setMinimumHeight(0)
         self._set_mouse_passthrough(True)
+        self._relinquish_keyboard_focus()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = CompanionState.THINKING
         self._expanded_output = False
@@ -201,6 +204,7 @@ class CompanionBubble(QFrame):
     def show_stream(self, text: str) -> None:
         self.cancel_countdown()
         self.setMinimumHeight(0)
+        self._relinquish_keyboard_focus()
         if not self.output_frame.isVisible() or self.state != CompanionState.THINKING:
             self.begin_thinking()
         self.state = CompanionState.THINKING
@@ -212,6 +216,7 @@ class CompanionBubble(QFrame):
         self.cancel_countdown()
         self.setMinimumHeight(0)
         self._set_mouse_passthrough(True)
+        self._relinquish_keyboard_focus()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = CompanionState.OUTPUT
         self._expanded_output = expanded
@@ -313,6 +318,11 @@ class CompanionBubble(QFrame):
         self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, enabled)
         if was_visible:
             self.show()
+
+    def _relinquish_keyboard_focus(self) -> None:
+        self.input.clearFocus()
+        self.output.clearFocus()
+        self.clearFocus()
 
     def _follow_cursor(self) -> None:
         if not self.isVisible():
