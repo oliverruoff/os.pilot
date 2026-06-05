@@ -118,11 +118,23 @@ def final_answer_text(text: str) -> str:
     if marker_match:
         return marker_match.group(1).strip()
     paragraphs = [part.strip() for part in re.split(r"\n\s*\n", stripped) if part.strip()]
-    if len(paragraphs) > 1 and _looks_like_reasoning(paragraphs[-2]):
+    for index, paragraph in enumerate(paragraphs[:-1]):
+        if _looks_like_reasoning(paragraph):
+            continue
+        if index > 0:
+            return "\n\n".join(paragraphs[index:])
+        break
+    if len(paragraphs) > 1 and all(_looks_like_reasoning(paragraph) for paragraph in paragraphs[:-1]):
         return paragraphs[-1]
     sentences = re.findall(r".+?(?:[.!?](?=\s|$)|$)", stripped, flags=re.S)
     sentences = [sentence.strip() for sentence in sentences if sentence.strip()]
-    if len(sentences) > 1 and _looks_like_reasoning(" ".join(sentences[:-1])):
+    for index, sentence in enumerate(sentences[:-1]):
+        if _looks_like_reasoning(sentence):
+            continue
+        if index > 0:
+            return " ".join(sentences[index:])
+        break
+    if len(sentences) > 1 and all(_looks_like_reasoning(sentence) for sentence in sentences[:-1]):
         return sentences[-1]
     return stripped
 
@@ -155,14 +167,21 @@ def _content_item_text(item: dict[str, Any]) -> str:
 def _looks_like_reasoning(text: str) -> bool:
     normalized = text.lower()
     markers = (
+        "the user asked",
         "the user said",
+        "user asked",
         "user said",
         "i should",
         "i probably",
+        "i propably",
         "i need",
         "i can",
         "i'll",
+        "i will",
         "let me",
+        "need to",
+        "we need",
+        "we should",
     )
     return any(marker in normalized for marker in markers)
 

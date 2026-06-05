@@ -14,6 +14,11 @@ OSPILOT_FAST_TOOL_HINT = """OSPilot visual-grounding hint:
 - Do not click for \"where is ...\" / \"show me ...\" requests unless the user explicitly asks to click or open it.
 """
 
+OSPILOT_FINAL_RESPONSE_HINT = """OSPilot final-response hint:
+- Final responses must contain only the user-facing answer or outcome.
+- Do not include planning, self-talk, reasoning summaries, or phrases like "I need to", "I should", or "let me".
+"""
+
 
 class PiRuntime:
     def __init__(self, config: AppConfig, rpc: PiRpcClient | None = None) -> None:
@@ -41,7 +46,7 @@ class PiRuntime:
         return await self.rpc.call("prompt", {"prompt": self._with_fast_tool_hint(text), "context": context or {}})
 
     def _with_fast_tool_hint(self, text: str) -> str:
-        return f"{OSPILOT_FAST_TOOL_HINT}\nUser request: {text}"
+        return f"{OSPILOT_FAST_TOOL_HINT}\n{OSPILOT_FINAL_RESPONSE_HINT}\nUser request: {text}"
 
     async def abort(self) -> Any:
         await self.rpc.notify("abort", {})

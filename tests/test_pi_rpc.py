@@ -91,3 +91,15 @@ def test_final_answer_text_uses_explicit_marker() -> None:
     text = "I need to answer briefly. Final answer: Hi :)"
 
     assert final_answer_text(text) == "Hi :)"
+
+
+def test_final_answer_text_strips_leaked_reasoning_paragraph_prefix() -> None:
+    text = "I need to mention what changed and include tests.\n\nUpdated the final-response handling.\n\nTests passed."
+
+    assert final_answer_text(text) == "Updated the final-response handling.\n\nTests passed."
+
+
+def test_final_answer_text_strips_multiple_leaked_reasoning_sentences() -> None:
+    text = "The user asked if this is done. I should answer directly. Yes."
+
+    assert final_answer_text(text) == "Yes."
