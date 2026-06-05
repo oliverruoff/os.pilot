@@ -24,9 +24,9 @@ def order_front(widget: Any, make_key: bool = False) -> None:
     platform_order_front(widget, make_key)
 
 
-def focus_widget(widget: Any) -> None:
+def focus_widget(widget: Any, top_level: Any | None = None) -> None:
     if sys.platform == "win32":
         from ospilot.desktop.windows.window import focus_widget as platform_focus_widget
     else:
         return
-    platform_focus_widget(widget)
+    platform_focus_widget(widget, top_level)

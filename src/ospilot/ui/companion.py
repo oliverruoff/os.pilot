@@ -136,8 +136,7 @@ class CompanionBubble(QFrame):
         self.input.setPlaceholderText("Ask pi...")
         self.input.setVisible(True)
         self._show_near_cursor(accept_keyboard=True)
-        self._focus_input()
-        QTimer.singleShot(50, self._focus_input)
+        self._schedule_input_focus()
 
     def show_voice_placeholder(self) -> None:
         self.cancel_countdown()
@@ -306,13 +305,20 @@ class CompanionBubble(QFrame):
             order_front(self)
 
     def _focus_input(self) -> None:
+        if self.state != CompanionState.CHAT_INPUT or not self.input.isVisible():
+            return
         order_front(self, make_key=True)
         QApplication.setActiveWindow(self)
         self.raise_()
         self.activateWindow()
         self.input.activateWindow()
         self.input.setFocus(Qt.FocusReason.ShortcutFocusReason)
-        focus_widget(self.input)
+        focus_widget(self.input, self)
+
+    def _schedule_input_focus(self) -> None:
+        self._focus_input()
+        for delay_ms in (75, 150, 300):
+            QTimer.singleShot(delay_ms, self._focus_input)
 
     def _set_mouse_passthrough(self, enabled: bool) -> None:
         if self._mouse_passthrough == enabled:
