@@ -55,7 +55,7 @@ const tools = [
   },
   {
     name: "ospilot_get_frontmost_ui_elements",
-    description: "Fast precise UI element lookup for the frontmost macOS app using Accessibility. Use this before screenshots when the user asks where a named UI control/setting/button is, or before clicking a named control. Pass a short query like \"battery\", \"settings\", \"search\". Returns element labels, roles, bounds, and exact center coordinates in screen points for ospilot_move_mouse or ospilot_click.",
+    description: "Fast precise UI element lookup for the frontmost macOS or Windows app using Accessibility/UI Automation. Use this before screenshots when the user asks where a named UI control/setting/button is, or before clicking a named control. Pass a short query like \"battery\", \"settings\", \"search\". Returns element labels, roles, bounds, and exact center coordinates in screen points for ospilot_move_mouse or ospilot_click.",
     parameters: {
       type: "object" as const,
       properties: {
@@ -94,7 +94,7 @@ const tools = [
   },
   {
     name: "ospilot_press_hotkey",
-    description: "Press a keyboard shortcut. Example: {keys: [\"command\", \"c\"]} for Cmd+C.",
+    description: "Press a keyboard shortcut. Example: {keys: [\"command\", \"c\"]} for Cmd+C on macOS or Win+C on Windows; use {keys: [\"ctrl\", \"c\"]} for Ctrl+C.",
     parameters: {
       type: "object" as const,
       properties: {
@@ -171,11 +171,11 @@ const tools = [
   },
   {
     name: "ospilot_open_app",
-    description: "Open a macOS app by name. Example: {app_name: \"Safari\"}",
+    description: "Open a macOS or Windows app by name. Example: {app_name: \"Safari\"} or {app_name: \"notepad\"}",
     parameters: {
       type: "object" as const,
       properties: {
-        app_name: { type: "string" as const, description: "Name of the macOS application to open." },
+        app_name: { type: "string" as const, description: "Name of the macOS or Windows application to open." },
       },
       required: ["app_name"],
     },

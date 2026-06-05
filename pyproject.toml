@@ -12,6 +12,9 @@ dependencies = [
   "PySide6>=6.7",
   "PyYAML>=6.0",
   "pynput>=1.8",
+  "comtypes>=1.4; platform_system == 'Windows'",
+  "mss>=9.0; platform_system == 'Windows'",
+  "Pillow>=10.0; platform_system == 'Windows'",
 ]
 
 [project.optional-dependencies]

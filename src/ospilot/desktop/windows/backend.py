@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-import platform
 from typing import Any
 
 from ospilot.core.config import AppConfig
 from ospilot.desktop.common.clipboard import read_clipboard, write_clipboard
 
+from .apps import open_app
+from .context import focus_app, get_active_context
+from .keyboard import press_hotkey, type_text
+from .mouse import MouseController
+from .screenshot import capture_screenshot_current_mouse_monitor
 from .shortcuts import GlobalShortcuts
-
-
-def _not_implemented(tool: str) -> dict[str, Any]:
-    return {"ok": False, "tool": tool, "platform": "windows", "error": "not implemented on windows yet"}
+from .ui_elements import get_frontmost_ui_elements
+from .window import configure_background_app
 
 
 class WindowsDesktopBackend:
@@ -18,45 +20,46 @@ class WindowsDesktopBackend:
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
+        self.mouse = MouseController()
 
     def stop(self) -> None:
-        return
+        self.mouse.stop()
 
     def configure_background_app(self) -> None:
-        return
+        configure_background_app()
 
     def create_global_shortcuts(self, parent: Any, open_chat: Any, open_voice: Any, stop: Any) -> GlobalShortcuts:
         return GlobalShortcuts(parent, open_chat, open_voice, stop)
 
     def get_active_context(self) -> dict[str, Any]:
-        return {"ok": True, "tool": "ospilot_get_active_context", "platform": platform.platform(), "mouse_position": None}
+        return get_active_context()
 
     def capture_screenshot_current_mouse_monitor(self, config: AppConfig) -> dict[str, Any]:
-        return _not_implemented("ospilot_capture_screenshot_current_mouse_monitor")
+        return capture_screenshot_current_mouse_monitor(config)
 
     def get_frontmost_ui_elements(self, query: str = "", limit: int = 120) -> dict[str, Any]:
-        return _not_implemented("ospilot_get_frontmost_ui_elements")
+        return get_frontmost_ui_elements(query, limit)
 
     def move_mouse(self, target: dict[str, Any], duration_ms: int | None = None) -> dict[str, Any]:
-        return _not_implemented("ospilot_move_mouse")
+        return self.mouse.move_mouse(target, duration_ms)
 
     def click(self, target: dict[str, Any] | None = None, double: bool = False) -> dict[str, Any]:
-        return _not_implemented("ospilot_double_click" if double else "ospilot_click")
+        return self.mouse.click(target, double)
 
     def right_click(self, target: dict[str, Any] | None = None) -> dict[str, Any]:
-        return _not_implemented("ospilot_right_click")
+        return self.mouse.right_click(target)
 
     def press_hotkey(self, keys: list[str]) -> dict[str, Any]:
-        return _not_implemented("ospilot_press_hotkey")
+        return press_hotkey(keys)
 
     def type_text(self, text: str) -> dict[str, Any]:
-        return _not_implemented("ospilot_type_text")
+        return type_text(text)
 
     def focus_app(self, pid: int) -> dict[str, Any]:
-        return _not_implemented("ospilot_focus_app")
+        return focus_app(pid)
 
     def open_app(self, app_name: str) -> dict[str, Any]:
-        return _not_implemented("ospilot_open_app")
+        return open_app(app_name)
 
     def read_clipboard(self) -> dict[str, Any]:
         return read_clipboard()
