@@ -141,7 +141,7 @@ requires a different API key variable, set that provider-specific variable
 instead. Keep `PI_ARGS` focused on arguments that should be passed to `pi`, such
 as the model selection.
 
-### 5. Install OSPilot
+### 5. Install OSPilot Dependencies
 
 Create and activate a Python virtual environment.
 
@@ -159,7 +159,20 @@ py -3 -m venv .venv
 .venv\Scripts\activate
 ```
 
-Install OSPilot from this repository:
+For the simplest manual run path, install the runtime dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+On Windows PowerShell:
+
+```powershell
+py -m pip install -r requirements.txt
+```
+
+Alternatively, install OSPilot from this repository. This also creates the
+`ospilot` command:
 
 ```bash
 pip install -e .
@@ -204,6 +217,20 @@ on `PATH`.
 
 Start OSPilot:
 
+macOS/Linux:
+
+```bash
+python main.py
+```
+
+Windows PowerShell:
+
+```powershell
+py main.py
+```
+
+If you installed the package with `pip install -e .`, you can also run:
+
 ```bash
 ospilot
 ```
@@ -222,6 +249,28 @@ until OSPilot has started successfully and the user can run at least one prompt.
 
 ## Run
 
+Simple manual run:
+
+macOS/Linux:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py
+```
+
+Windows PowerShell:
+
+```powershell
+py -3 -m venv .venv
+.venv\Scripts\activate
+py -m pip install -r requirements.txt
+py main.py
+```
+
+Package install run:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -229,9 +278,9 @@ pip install -e .
 ospilot
 ```
 
-On Windows, activate the virtualenv with `.venv\Scripts\activate` and run the
-same `pip install -e .` and `ospilot` commands. Windows support targets Windows
-11 and uses Windows-only dependencies through platform markers.
+On Windows, activate the virtualenv with `.venv\Scripts\activate` and run
+`py -m pip install -e .` and `ospilot`. Windows support targets Windows 11 and
+uses Windows-only dependencies through platform markers.
 
 Set provider/model configuration the same way you would for `pi` directly, for example:
 
