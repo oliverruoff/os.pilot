@@ -50,16 +50,14 @@ class MouseController:
             for index, point in enumerate(path):
                 if self._stop.is_set():
                     return {"ok": False, "tool": "ospilot_move_mouse", "error": "stopped"}
-                Quartz.CGWarpMouseCursorPosition(point)
+                _move_cursor_to_point(Quartz, point[0], point[1])
                 if index < len(path) - 1:
                     # Tiny cadence variation avoids a perfectly mechanical 60Hz line.
                     slice_duration = duration / steps * (0.72 + 0.56 * ((index % 5) / 4))
                     last += slice_duration
                     time.sleep(max(0.0, last - time.perf_counter()))
-            Quartz.CGWarpMouseCursorPosition((end_x, end_y))
-            final_pos = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
-            final_error_px = math.dist((final_pos.x, final_pos.y), (end_x, end_y))
-            return {"ok": True, "tool": "ospilot_move_mouse", "target": {"x": end_x, "y": end_y}, "metadata": {"duration_ms": round(duration * 1000), "steps": steps, "profile": "human_bezier", "final_error_px": round(final_error_px, 2)}}
+            final_x, final_y, final_error_px, settle_attempts = _settle_cursor_at_point(Quartz, end_x, end_y)
+            return {"ok": True, "tool": "ospilot_move_mouse", "target": {"x": end_x, "y": end_y}, "actual": {"x": final_x, "y": final_y}, "metadata": {"duration_ms": round(duration * 1000), "steps": steps, "profile": "human_bezier", "final_error_px": round(final_error_px, 2), "settle_attempts": settle_attempts}}
 
     def click(self, target: dict[str, Any] | None = None, double: bool = False) -> dict:
         return self._click(target, button="left", double=double)
@@ -85,11 +83,15 @@ class MouseController:
             if click_target:
                 pos_x = click_target["x"]
                 pos_y = click_target["y"]
-                Quartz.CGWarpMouseCursorPosition((pos_x, pos_y))
+                actual_x, actual_y, final_error_px, settle_attempts = _settle_cursor_at_point(Quartz, pos_x, pos_y)
             else:
                 pos = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
                 pos_x = float(pos.x)
                 pos_y = float(pos.y)
+                actual_x = pos_x
+                actual_y = pos_y
+                final_error_px = 0.0
+                settle_attempts = 0
             _activate_app_at_point(Quartz, pos_x, pos_y)
             event_type_down, event_type_up, quartz_button = _quartz_button_events(Quartz, button)
             for index in range(2 if double else 1):
@@ -103,7 +105,7 @@ class MouseController:
                 _post_mouse_event(Quartz, up)
                 if double and index == 0:
                     time.sleep(0.06)
-            return {"ok": True, "tool": tool, "target": {"x": pos_x, "y": pos_y}, "metadata": {"event_tap": "hid", "button": button}}
+            return {"ok": True, "tool": tool, "target": {"x": pos_x, "y": pos_y}, "actual": {"x": actual_x, "y": actual_y}, "metadata": {"event_tap": "hid", "button": button, "final_error_px": round(final_error_px, 2), "settle_attempts": settle_attempts}}
         except Exception as exc:
             return {"ok": False, "tool": tool, "error": str(exc)}
 
@@ -150,6 +152,34 @@ def _bounds_from_screenshot_context(screenshot_context: dict[str, Any] | None) -
     if width <= 0 or height <= 0:
         return None
     return Bounds(float(x), float(y), float(width), float(height))
+
+
+def _move_cursor_to_point(Quartz, x: float, y: float) -> None:
+    display_id, display_bounds = _display_for_point(Quartz, x, y)
+    if display_id is not None and display_bounds is not None:
+        try:
+            err = Quartz.CGDisplayMoveCursorToPoint(display_id, (x - display_bounds.origin.x, y - display_bounds.origin.y))
+            if err == 0:
+                return
+        except Exception:
+            pass
+    Quartz.CGWarpMouseCursorPosition((x, y))
+
+
+def _settle_cursor_at_point(Quartz, x: float, y: float) -> tuple[float, float, float, int]:
+    final_x = x
+    final_y = y
+    final_error_px = float("inf")
+    for attempt in range(1, 6):
+        _move_cursor_to_point(Quartz, x, y)
+        time.sleep(0.01)
+        pos = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
+        final_x = float(pos.x)
+        final_y = float(pos.y)
+        final_error_px = math.dist((final_x, final_y), (x, y))
+        if final_error_px <= 0.25:
+            return final_x, final_y, final_error_px, attempt
+    return final_x, final_y, final_error_px, 5
 
 
 def _click_tool(button: str, double: bool) -> str:
