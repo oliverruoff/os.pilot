@@ -457,6 +457,8 @@ class CompanionBubble(QFrame):
         self.output.document().setTextWidth(text_width)
         document_height = self.output.document().size().height()
         row_height = self.output.fontMetrics().lineSpacing()
+        vertical_inset = 4 if self.state == CompanionState.THINKING else 0
+        self.output.setViewportMargins(0, vertical_inset, 0, vertical_inset)
         if self._expanded_output:
             cursor = QCursor.pos()
             screen = QApplication.screenAt(cursor) or QApplication.primaryScreen()
