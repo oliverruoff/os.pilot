@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
+
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt
 from PySide6.QtGui import QAction, QColor, QFont, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
+
+from ospilot.pi.runtime import PiSession
 
 
 def _pilot_terminal_icon() -> QIcon:
@@ -51,21 +55,49 @@ def _tray_icon() -> QIcon:
 
 
 class TrayController:
-    def __init__(self, open_chat, open_voice, new_session, stop, quit_app) -> None:
+    def __init__(
+        self,
+        open_chat,
+        open_voice,
+        new_session,
+        list_sessions: Callable[[], Sequence[PiSession]],
+        switch_session: Callable[[PiSession], None],
+        stop,
+        quit_app,
+    ) -> None:
+        self._list_sessions = list_sessions
+        self._switch_session = switch_session
         self.tray = QSystemTrayIcon(_tray_icon())
         menu = QMenu()
-        for label, callback in (
-            ("Open Chat", open_chat),
-            ("Open Voice", open_voice),
-            ("New Session", new_session),
-            ("Stop", stop),
-            ("Quit", quit_app),
-        ):
-            action = QAction(label, menu)
-            action.triggered.connect(callback)
-            menu.addAction(action)
+        self._add_action(menu, "Open Chat", open_chat)
+        self._add_action(menu, "Open Voice", open_voice)
+        self._add_action(menu, "New Session", new_session)
+        self.sessions_menu = menu.addMenu("Sessions")
+        self.sessions_menu.aboutToShow.connect(self._populate_sessions_menu)
+        self._add_action(menu, "Stop", stop)
+        self._add_action(menu, "Quit", quit_app)
         self.tray.setContextMenu(menu)
         self.tray.setToolTip("OSPilot")
+
+    def _add_action(self, menu: QMenu, label: str, callback) -> QAction:
+        action = QAction(label, menu)
+        action.triggered.connect(callback)
+        menu.addAction(action)
+        return action
+
+    def _populate_sessions_menu(self) -> None:
+        self.sessions_menu.clear()
+        sessions = list(self._list_sessions())
+        if not sessions:
+            action = QAction("No sessions found", self.sessions_menu)
+            action.setEnabled(False)
+            self.sessions_menu.addAction(action)
+            return
+        for session in sessions:
+            action = QAction(session.title, self.sessions_menu)
+            action.setToolTip(str(session.path))
+            action.triggered.connect(lambda _checked=False, selected=session: self._switch_session(selected))
+            self.sessions_menu.addAction(action)
 
     def show(self) -> None:
         self.tray.show()

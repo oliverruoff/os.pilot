@@ -15,7 +15,7 @@ from ospilot.desktop import create_desktop_backend
 from ospilot.desktop.registry import build_default_registry
 from ospilot.ipc import IpcServer
 from ospilot.pi.events import event_text, event_thinking_text, final_answer_text
-from ospilot.pi.runtime import PiRuntime
+from ospilot.pi.runtime import PiRuntime, PiSession
 from ospilot.ui import CompanionBubble, CompanionState, CursorHalo, TrayController
 
 
@@ -62,7 +62,16 @@ class OSPilotApp:
         self.ipc = IpcServer(self.registry)
         self.runtime = PiRuntime(self.config)
         self.runtime.rpc.add_event_handler(self._on_pi_event)
-        self.tray = TrayController(self.open_chat, self.open_voice, self.new_session, self.stop, self.quit)
+        self._runtime_env_extra: dict[str, str] = {}
+        self.tray = TrayController(
+            self.open_chat,
+            self.open_voice,
+            self.new_session,
+            self.list_sessions,
+            self.switch_session,
+            self.stop,
+            self.quit,
+        )
         self.shortcuts = self.desktop.create_global_shortcuts(self.companion, self.open_chat, self.open_voice, self.stop)
         self.logger.info("shortcut backend=%s", self.shortcuts.backend)
 
@@ -73,7 +82,11 @@ class OSPilotApp:
         return self.qt.exec()
 
     async def _start_runtime(self) -> None:
-        await self.runtime.start({"OSPILOT_IPC_URL": self.ipc.url, "OSPILOT_IPC_TOKEN": self.ipc.token})
+        self._runtime_env_extra = {
+            "OSPILOT_IPC_URL": self.ipc.url,
+            "OSPILOT_IPC_TOKEN": self.ipc.token,
+        }
+        await self.runtime.start(self._runtime_env_extra)
         state = await self.runtime.get_state()
         model = state.get("data", {}).get("model") if isinstance(state, dict) else None
         self.logger.info("pi started model=%s", model)
@@ -116,6 +129,23 @@ class OSPilotApp:
         self.companion.show_status(message)
         self.companion.start_countdown(message)
         self._schedule(self.runtime.new_session(), "new session")
+
+    def list_sessions(self) -> list[PiSession]:
+        return self.runtime.recent_sessions(20)
+
+    def switch_session(self, session: PiSession) -> None:
+        self.logger.info("switch_session id=%s path=%s", session.id, session.path)
+        self._active_prompt = False
+        self._watchdog.stop()
+        self.desktop.stop()
+        self.halo.hide_halo()
+        message = f"Switching pi session: {session.title}"
+        self.companion.show_status(message)
+        self.companion.start_countdown(message)
+        self._schedule(
+            self.runtime.switch_session(session.path, self._runtime_env_extra),
+            "switch session",
+        )
 
     def stop(self) -> None:
         self.logger.info("stop")
