@@ -112,7 +112,9 @@ class OSPilotApp:
 
     def new_session(self) -> None:
         self.logger.info("new_session")
-        self.companion.show_status("Starting new pi session...")
+        message = "Starting new pi session..."
+        self.companion.show_status(message)
+        self.companion.start_countdown(message)
         self._schedule(self.runtime.new_session(), "new session")
 
     def stop(self) -> None:
