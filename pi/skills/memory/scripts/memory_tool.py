@@ -10,7 +10,7 @@ from datetime import date as date_type
 from datetime import datetime, timedelta
 from pathlib import Path
 
-MEMORY_DIR = Path("/workspace/memory")
+MEMORY_DIR = Path.home() / ".ospilot" / "memory"
 ROLLING_FILE = MEMORY_DIR / "memory.md"
 MAX_ROLLING_CHARS = 60_000
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
