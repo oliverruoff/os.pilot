@@ -252,7 +252,7 @@ class CompanionBubble(QFrame):
         self.header.hide()
         self.status_label.setText("")
         self.label.hide()
-        self.output.clear()
+        self.output.setPlainText("Thinking...")
         self.output_frame.show()
         self.input.setVisible(False)
         self.hint_label.hide()
@@ -268,6 +268,8 @@ class CompanionBubble(QFrame):
         self._set_visual_state(self.state)
         self._fit_final_output = False
         self._inline_final_output = False
+        if not text.strip():
+            text = "Thinking..."
         self.output.setPlainText(text)
         self._show_near_cursor(width=380)
 

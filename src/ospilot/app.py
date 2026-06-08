@@ -168,14 +168,14 @@ class OSPilotApp:
             self._stream_buffer = text
             self._last_output = self._stream_buffer
         elif event_type == "tool_execution_start":
-            self.companion.show_status(text or f"Running {tool_name}...", CompanionState.TOOL_RUNNING, tool_name)
+            self.companion.show_status(_tool_status_text(text, tool_name), CompanionState.TOOL_RUNNING, tool_name)
         elif event_type == "tool_execution_update":
-            self.companion.show_status(text or f"Running {tool_name}...", CompanionState.TOOL_RUNNING, tool_name)
+            self.companion.show_status(_tool_status_text(text, tool_name), CompanionState.TOOL_RUNNING, tool_name)
         elif event_type == "tool_execution_end":
             if self._last_output:
                 self.companion.show_stream(self._thinking_buffer or self._stream_buffer)
             else:
-                self.companion.show_status(text or "Tool finished", CompanionState.TOOL_RUNNING, tool_name)
+                self.companion.show_status(_tool_status_text(text, tool_name, finished=True), CompanionState.TOOL_RUNNING, tool_name)
         elif event_type in {"agent_end", "auto_retry_end"}:
             self._active_prompt = False
             self._watchdog.stop()
@@ -296,6 +296,23 @@ def _merge_stream_text(current: str, incoming: str) -> str:
         if current.endswith(incoming[:size]):
             return current + incoming[size:]
     return current + incoming
+
+
+def _tool_status_text(text: str, tool_name: str = "", finished: bool = False) -> str:
+    stripped = text.strip()
+    if stripped and stripped not in {"{}", "[]", "null", "None"}:
+        return stripped
+    label = _tool_label(tool_name)
+    if finished:
+        return f"Finished {label}." if label else "Tool finished."
+    return f"Running {label}..." if label else "Working..."
+
+
+def _tool_label(tool_name: str) -> str:
+    stripped = tool_name.strip()
+    if not stripped:
+        return ""
+    return stripped.removeprefix("ospilot_").replace("_", " ")
 
 
 def _configure_process_for_platform() -> None:

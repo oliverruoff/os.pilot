@@ -1,6 +1,6 @@
 import asyncio
 
-from ospilot.app import OSPilotApp, _merge_stream_text
+from ospilot.app import OSPilotApp, _merge_stream_text, _tool_status_text
 from ospilot.pi.events import PiEvent, event_text, event_thinking_text, final_answer_text
 from ospilot.pi.rpc import JsonRpcMessage, PiRpcClient, PiRpcCommand, _subprocess_startup_kwargs
 
@@ -89,6 +89,18 @@ def test_event_text_ignores_reasoning_payload_text() -> None:
 
 def test_merge_stream_text_deduplicates_partial_overlap() -> None:
     assert _merge_stream_text("Updated the final-response hand", "handling.\n\nTests passed.") == "Updated the final-response handling.\n\nTests passed."
+
+
+def test_tool_status_text_replaces_empty_json_payload() -> None:
+    assert _tool_status_text("{}", "ospilot_get_active_context") == "Running get active context..."
+
+
+def test_tool_status_text_replaces_empty_finished_payload() -> None:
+    assert _tool_status_text("{}", "ospilot_get_active_context", finished=True) == "Finished get active context."
+
+
+def test_tool_status_text_preserves_real_status_text() -> None:
+    assert _tool_status_text("Looking at your screen...", "ospilot_capture_screenshot_current_mouse_monitor") == "Looking at your screen..."
 
 
 def test_message_end_replaces_duplicated_stream_buffer() -> None:
