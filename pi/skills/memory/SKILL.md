@@ -1,7 +1,7 @@
 ---
 name: memory
-description: Read and save persistent assistant memories in markdown files under /workspace/memory. Use when the user asks to remember something, asks whether something is remembered, asks about previous remembered information, or when missing context may be recoverable from memory.
-compatibility: Requires filesystem read/write access to /workspace/memory and Python 3.
+description: Read and save persistent assistant memories in markdown files under the user's home directory. Use when the user asks to remember something, asks whether something is remembered, asks about previous remembered information, or when missing context may be recoverable from memory.
+compatibility: Requires Python 3. Cross-platform (Linux, macOS, Windows). Creates the storage directory automatically on first use.
 allowed-tools: Bash(python3:*)
 metadata:
   version: "1.0"
@@ -23,13 +23,15 @@ Do not expose, document, or depend on any other memory tool.
 All memory files are stored under:
 
 ```text
-/workspace/memory/
+~/.ospilot/memory/
 ```
+
+(Windows: `%USERPROFILE%\.ospilot\memory\`)
 
 The skill uses two kinds of markdown files:
 
-- `/workspace/memory/memory.md` — standard rolling memory file.
-- `/workspace/memory/YYYY-MM-DD.md` — daily memory files, one file per calendar day.
+- `~/.ospilot/memory/memory.md` — standard rolling memory file.
+- `~/.ospilot/memory/YYYY-MM-DD.md` — daily memory files, one file per calendar day.
 
 Each memory is stored as exactly one markdown bullet point on exactly one line, prefixed with a timestamp in system/container local time.
 
@@ -72,13 +74,13 @@ date:
 
 ### Behavior
 
-1. Ensure `/workspace/memory/` exists.
+1. Ensure `~/.ospilot/memory/` exists (create if missing).
 2. Determine the effective date and timestamp using system/container local time.
 3. Ensure the effective daily markdown file and `/workspace/memory/memory.md` exist.
 4. Normalize the memory text by trimming whitespace and replacing internal newlines with spaces.
 5. Store it as one bullet line: `- <YYYY-MM-DDTHH:MM> | <memory>`.
 6. Avoid duplicates by comparing memory text without timestamp prefix against existing bullet entries in the effective daily file and in `/workspace/memory/memory.md`.
-7. Append the bullet line to the daily file and to `/workspace/memory/memory.md`.
+7. Append the bullet line to the daily file and to `~/.ospilot/memory/memory.md`.
 8. Keep `/workspace/memory/memory.md` at or below `60000` characters by removing oldest memories first before appending.
 9. Never trim daily files.
 10. Return a short success message including the written daily file path.
@@ -112,9 +114,9 @@ end_date:
 
 ### Behavior
 
-1. By default, read `/workspace/memory/memory.md`.
-2. If the user asks about memories for a specific date, read `/workspace/memory/YYYY-MM-DD.md` for that date.
-3. If the user asks about a date range, read every existing `/workspace/memory/YYYY-MM-DD.md` file in the inclusive range and skip missing daily files.
+1. By default, read `~/.ospilot/memory/memory.md`.
+2. If the user asks about memories for a specific date, read `~/.ospilot/memory/YYYY-MM-DD.md` for that date.
+3. If the user asks about a date range, read every existing `~/.ospilot/memory/YYYY-MM-DD.md` file in the inclusive range and skip missing daily files.
 4. Return raw relevant markdown bullet lines with file/date context where useful.
 5. If the requested file does not exist, return an empty memory result rather than inventing content.
 
