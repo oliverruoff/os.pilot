@@ -163,8 +163,7 @@ class OSPilotApp:
                 if not thinking_text:
                     self.companion.show_stream(self._stream_buffer)
         elif event_type == "message_end" and text and role != "user":
-            if not self._stream_buffer or len(text) > len(self._stream_buffer):
-                self._stream_buffer = text
+            self._stream_buffer = text
             self._last_output = self._stream_buffer
         elif event_type == "tool_execution_start":
             self.companion.show_status(text or f"Running {tool_name}...", CompanionState.TOOL_RUNNING, tool_name)
@@ -261,13 +260,7 @@ class OSPilotApp:
         return role, text
 
     def _merge_stream_text(self, current: str, incoming: str) -> str:
-        if not current:
-            return incoming
-        if incoming.startswith(current):
-            return incoming
-        if current.endswith(incoming):
-            return current
-        return current + incoming
+        return _merge_stream_text(current, incoming)
 
     def _schedule(self, coroutine, label: str) -> None:
         future = asyncio.run_coroutine_threadsafe(coroutine, self.loop)
@@ -287,6 +280,20 @@ class OSPilotApp:
 
 def main() -> int:
     return OSPilotApp().run()
+
+
+def _merge_stream_text(current: str, incoming: str) -> str:
+    if not current:
+        return incoming
+    if incoming.startswith(current):
+        return incoming
+    if current.endswith(incoming):
+        return current
+    max_overlap = min(len(current), len(incoming))
+    for size in range(max_overlap, 0, -1):
+        if current.endswith(incoming[:size]):
+            return current + incoming[size:]
+    return current + incoming
 
 
 def _configure_process_for_platform() -> None:

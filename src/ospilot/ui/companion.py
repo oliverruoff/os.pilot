@@ -42,6 +42,10 @@ class CountdownRing(QWidget):
         painter.drawArc(rect, 90 * 16, int(-360 * self.progress * 16))
 
 
+COUNTDOWN_RING_RIGHT_PADDING = 9
+COUNTDOWN_RING_TEXT_GAP = 10
+
+
 class CompanionBubble(QFrame):
     def __init__(self) -> None:
         super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
@@ -105,6 +109,7 @@ class CompanionBubble(QFrame):
         self._countdown_seconds = 0.0
         self._expanded_output = False
         self._fit_final_output = False
+        self._inline_final_output = False
         self._mouse_passthrough = False
 
     def show_chat(self, on_submit) -> None:
@@ -129,6 +134,7 @@ class CompanionBubble(QFrame):
         self.header.hide()
         self.status_label.setText("")
         self.label.setMaximumHeight(16777215)
+        self._inline_final_output = False
         self.label.setText("")
         self.label.hide()
         self.output.clear()
@@ -168,6 +174,7 @@ class CompanionBubble(QFrame):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = state
         self._fit_final_output = False
+        self._inline_final_output = False
         self.main_layout.setContentsMargins(16, 12, 16, 12)
         self.header.hide()
         self.status_label.setText("")
@@ -192,6 +199,7 @@ class CompanionBubble(QFrame):
         self.state = CompanionState.THINKING
         self._expanded_output = False
         self._fit_final_output = False
+        self._inline_final_output = False
         self.main_layout.setContentsMargins(12, 8, 30, 8)
         self.header.hide()
         self.status_label.setText("")
@@ -209,6 +217,7 @@ class CompanionBubble(QFrame):
             self.begin_thinking()
         self.state = CompanionState.THINKING
         self._fit_final_output = False
+        self._inline_final_output = False
         self.output.setPlainText(text)
         self._show_near_cursor(width=380)
 
@@ -221,10 +230,12 @@ class CompanionBubble(QFrame):
         self.state = CompanionState.OUTPUT
         self._expanded_output = expanded
         self._fit_final_output = fit_to_content
-        self.main_layout.setContentsMargins(12, 8, 30, 8)
+        self._inline_final_output = fit_to_content and _is_inline_final_output(text) and self._inline_final_output_fits(text)
+        right_margin = self._countdown_reserved_margin() if fit_to_content else 30
+        self.main_layout.setContentsMargins(12, 8, right_margin, 8)
         self.header.hide()
-        if fit_to_content and _is_inline_final_output(text):
-            self.main_layout.setContentsMargins(16, 8, 30, 8)
+        if self._inline_final_output:
+            self.main_layout.setContentsMargins(16, 8, right_margin, 8)
             self.label.setWordWrap(False)
             self.label.setText(text)
             self.label.show()
@@ -251,6 +262,7 @@ class CompanionBubble(QFrame):
         self.status_label.setText("")
         self._expanded_output = False
         self._fit_final_output = False
+        self._inline_final_output = False
         self.header.show()
         self.label.show()
         self.main_layout.setContentsMargins(16, 12, 16, 12)
@@ -371,8 +383,10 @@ class CompanionBubble(QFrame):
         if not expanded:
             lines = [line.strip() for line in text.splitlines() if line.strip()]
             longest = max(lines, key=len, default=text)
-            metrics = self.label.fontMetrics() if self._fit_final_output and _is_inline_final_output(text) else self.output.fontMetrics()
+            metrics = self.label.fontMetrics() if self._inline_final_output else self.output.fontMetrics()
             text_width = metrics.horizontalAdvance(longest)
+            if self._inline_final_output:
+                return max(140, min(self._max_inline_output_width(), text_width + 16 + self._countdown_reserved_margin()))
             return max(140, min(420, text_width + 56))
         cursor = QCursor.pos()
         screen = QApplication.screenAt(cursor) or QApplication.primaryScreen()
@@ -413,7 +427,20 @@ class CompanionBubble(QFrame):
         QTimer.singleShot(0, lambda: self.output.verticalScrollBar().setValue(self.output.verticalScrollBar().maximum()))
 
     def _position_countdown_ring(self) -> None:
-        self.countdown_ring.move(max(0, self.width() - self.countdown_ring.width() - 9), 8)
+        self.countdown_ring.move(max(0, self.width() - self.countdown_ring.width() - COUNTDOWN_RING_RIGHT_PADDING), 8)
+
+    def _countdown_reserved_margin(self) -> int:
+        return self.countdown_ring.width() + COUNTDOWN_RING_RIGHT_PADDING + COUNTDOWN_RING_TEXT_GAP
+
+    def _inline_final_output_fits(self, text: str) -> bool:
+        text_width = self.label.fontMetrics().horizontalAdvance(text.strip())
+        return text_width + 16 + self._countdown_reserved_margin() <= self._max_inline_output_width()
+
+    def _max_inline_output_width(self) -> int:
+        cursor = QCursor.pos()
+        screen = QApplication.screenAt(cursor) or QApplication.primaryScreen()
+        bounds = screen.availableGeometry() if screen else QApplication.primaryScreen().availableGeometry()
+        return max(140, bounds.width() - 96)
 
     def _position_near_cursor(self) -> QPoint:
         cursor = QCursor.pos()

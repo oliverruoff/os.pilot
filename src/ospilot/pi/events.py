@@ -40,30 +40,22 @@ class PiEvent:
 
 
 def event_text(event: PiEvent) -> str:
-    for key in ("text", "content", "message", "status"):
-        value = event.payload.get(key)
-        if isinstance(value, str):
-            return value
+    if _is_final_text_part(event.payload):
+        for key in ("text", "content", "message", "status"):
+            value = event.payload.get(key)
+            if isinstance(value, str):
+                return value
     delta = event.payload.get("delta")
     if isinstance(delta, str):
         return delta
-    if isinstance(delta, dict):
+    if isinstance(delta, dict) and _is_final_text_part(delta):
         value = delta.get("text") or delta.get("content") or delta.get("delta")
         if isinstance(value, str):
             return value
     assistant_event = event.payload.get("assistantMessageEvent")
     if isinstance(assistant_event, dict):
-        for key in ("text", "content", "delta"):
-            value = assistant_event.get(key)
-            if isinstance(value, str):
-                return value
-        delta = assistant_event.get("delta")
-        if isinstance(delta, dict):
-            value = delta.get("text") or delta.get("content") or delta.get("delta")
-            if isinstance(value, str):
-                return value
         content = assistant_event.get("content")
-        if isinstance(content, dict):
+        if isinstance(content, dict) and _is_final_text_part(content):
             return _content_item_text(content)
         if isinstance(content, list):
             parts = []
@@ -71,6 +63,16 @@ def event_text(event: PiEvent) -> str:
                 if isinstance(item, dict) and _is_final_text_part(item):
                     parts.append(_content_item_text(item))
             return "".join(parts)
+        if _is_final_text_part(assistant_event):
+            for key in ("text", "content", "delta"):
+                value = assistant_event.get(key)
+                if isinstance(value, str):
+                    return value
+        delta = assistant_event.get("delta")
+        if isinstance(delta, dict) and _is_final_text_part(delta):
+            value = delta.get("text") or delta.get("content") or delta.get("delta")
+            if isinstance(value, str):
+                return value
     message = event.payload.get("message")
     if isinstance(message, dict):
         error = message.get("errorMessage")

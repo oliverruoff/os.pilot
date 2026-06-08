@@ -1,5 +1,6 @@
 import asyncio
 
+from ospilot.app import OSPilotApp, _merge_stream_text
 from ospilot.pi.events import PiEvent, event_text, event_thinking_text, final_answer_text
 from ospilot.pi.rpc import JsonRpcMessage, PiRpcClient, PiRpcCommand, _subprocess_startup_kwargs
 
@@ -55,6 +56,50 @@ def test_event_text_ignores_reasoning_content_parts() -> None:
     )
 
     assert event_text(event) == "final answer"
+
+
+def test_event_text_prefers_structured_final_content_over_generic_assistant_text() -> None:
+    event = PiEvent(
+        type="message_end",
+        payload={
+            "assistantMessageEvent": {
+                "text": "I need to provide the concise answer.",
+                "content": [
+                    {"type": "reasoning", "text": "I need to provide the concise answer."},
+                    {"type": "text", "text": "Done."},
+                ],
+            }
+        },
+    )
+
+    assert event_text(event) == "Done."
+
+
+def test_event_text_ignores_reasoning_delta_dict() -> None:
+    event = PiEvent(type="message_update", payload={"delta": {"type": "reasoning", "text": "hidden thought"}})
+
+    assert event_text(event) == ""
+
+
+def test_event_text_ignores_reasoning_payload_text() -> None:
+    event = PiEvent(type="message_update", payload={"type": "reasoning", "text": "hidden thought"})
+
+    assert event_text(event) == ""
+
+
+def test_merge_stream_text_deduplicates_partial_overlap() -> None:
+    assert _merge_stream_text("Updated the final-response hand", "handling.\n\nTests passed.") == "Updated the final-response handling.\n\nTests passed."
+
+
+def test_message_end_replaces_duplicated_stream_buffer() -> None:
+    app = OSPilotApp.__new__(OSPilotApp)
+    app._active_prompt = False
+    app._stream_buffer = "Done.Done."
+    app._last_output = app._stream_buffer
+
+    app._apply_pi_event("message_end", "assistant\nDone.")
+
+    assert app._last_output == "Done."
 
 
 def test_event_thinking_text_extracts_reasoning_content_parts() -> None:

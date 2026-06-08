@@ -76,12 +76,12 @@ date:
 
 1. Ensure `~/.ospilot/memory/` exists (create if missing).
 2. Determine the effective date and timestamp using system/container local time.
-3. Ensure the effective daily markdown file and `/workspace/memory/memory.md` exist.
+3. Ensure the effective daily markdown file and `~/.ospilot/memory/memory.md` exist.
 4. Normalize the memory text by trimming whitespace and replacing internal newlines with spaces.
 5. Store it as one bullet line: `- <YYYY-MM-DDTHH:MM> | <memory>`.
-6. Avoid duplicates by comparing memory text without timestamp prefix against existing bullet entries in the effective daily file and in `/workspace/memory/memory.md`.
+6. Avoid duplicates by comparing memory text without timestamp prefix against existing bullet entries in the effective daily file and in `~/.ospilot/memory/memory.md`.
 7. Append the bullet line to the daily file and to `~/.ospilot/memory/memory.md`.
-8. Keep `/workspace/memory/memory.md` at or below `60000` characters by removing oldest memories first before appending.
+8. Keep `~/.ospilot/memory/memory.md` at or below `60000` characters by removing oldest memories first before appending.
 9. Never trim daily files.
 10. Return a short success message including the written daily file path.
 
