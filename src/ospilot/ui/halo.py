@@ -47,9 +47,9 @@ class CursorHalo(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         center = QPointF(self.width() / 2, self.height() / 2)
         pulse = 0.5 + 0.5 * math.sin(self.phase)
-        colors = [QColor(80, 165, 255, 95), QColor(197, 92, 255, 75), QColor(80, 255, 210, 55)]
+        colors = [QColor(123, 165, 214, 72), QColor(105, 126, 158, 54), QColor(122, 171, 165, 38)]
         if self.mode == "error":
-            colors = [QColor(255, 80, 115, 105), QColor(255, 170, 70, 70), QColor(180, 90, 255, 50)]
+            colors = [QColor(205, 104, 119, 82), QColor(185, 131, 93, 54), QColor(145, 132, 183, 34)]
         for index, color in enumerate(colors):
             radius = 22 + index * 12 + pulse * 8
             offset = QPointF(math.cos(self.phase + index * 2.1) * 5, math.sin(self.phase + index * 2.1) * 5)

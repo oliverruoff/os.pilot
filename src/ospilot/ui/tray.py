@@ -1,30 +1,45 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QAction, QColor, QFont, QIcon, QImage, QPainter, QPixmap
+from PySide6.QtCore import QPointF, QRect, QRectF, Qt
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 
-def _emoji_tray_icon() -> QIcon:
+def _pilot_terminal_icon() -> QIcon:
     size = 64
     image = QImage(size, size, QImage.Format.Format_ARGB32)
     image.fill(Qt.GlobalColor.transparent)
 
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    font = QFont("Apple Color Emoji")
-    font.setPixelSize(44)
-    painter.setFont(font)
-    painter.drawText(QRect(0, 4, size, size), Qt.AlignmentFlag.AlignCenter, "🧑🏻‍✈️")
-    painter.end()
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(0, 0, 0, 255))
 
-    # Convert the emoji to a monochrome template-style icon. macOS can tint mask icons
-    # for light/dark menu bars; other platforms get a crisp black silhouette.
-    for y in range(size):
-        for x in range(size):
-            alpha = QColor(image.pixelColor(x, y)).alpha()
-            if alpha:
-                image.setPixelColor(x, y, QColor(0, 0, 0, alpha))
+    body = QRectF(10, 14, 44, 36)
+    painter.drawRoundedRect(body, 13, 13)
+
+    notch = QPainterPath()
+    notch.moveTo(23, 14)
+    notch.lineTo(29, 7)
+    notch.lineTo(35, 14)
+    notch.closeSubpath()
+    painter.drawPath(notch)
+
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+    painter.drawRoundedRect(QRectF(15, 20, 34, 21), 6, 6)
+
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+    painter.setPen(QPen(QColor(0, 0, 0, 255), 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+    painter.drawLine(QPointF(21, 30), QPointF(27, 35))
+    painter.drawLine(QPointF(27, 25), QPointF(21, 30))
+    painter.drawLine(QPointF(33, 35), QPointF(42, 35))
+
+    font = QFont("Menlo")
+    font.setPixelSize(9)
+    font.setBold(True)
+    painter.setFont(font)
+    painter.drawText(QRect(0, 46, size, 12), Qt.AlignmentFlag.AlignCenter, "PI")
+    painter.end()
 
     icon = QIcon(QPixmap.fromImage(image))
     icon.setIsMask(True)
@@ -32,7 +47,7 @@ def _emoji_tray_icon() -> QIcon:
 
 
 def _tray_icon() -> QIcon:
-    return _emoji_tray_icon()
+    return _pilot_terminal_icon()
 
 
 class TrayController:

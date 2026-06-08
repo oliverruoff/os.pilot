@@ -3,8 +3,8 @@ from __future__ import annotations
 import time
 from enum import StrEnum
 
-from PySide6.QtCore import QPoint, QRectF, QTimer, Qt
-from PySide6.QtGui import QColor, QCursor, QPainter, QPen
+from PySide6.QtCore import QPoint, QPointF, QRectF, QTimer, Qt
+from PySide6.QtGui import QColor, QBrush, QCursor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLineEdit, QLabel, QTextEdit, QVBoxLayout, QWidget
 
 from ospilot.desktop.window import allow_fullscreen_overlay, focus_widget, order_front
@@ -21,12 +21,42 @@ class CompanionState(StrEnum):
     ERROR = "error"
 
 
+FONT_STACK = '"JetBrains Mono", "Cascadia Code", "SF Mono", Menlo, Consolas, monospace'
+FONT_FAMILIES = ["JetBrains Mono", "Cascadia Code", "SF Mono", "Menlo", "Consolas", "monospace"]
+
+ACCENTS = {
+    CompanionState.CHAT_INPUT: (QColor(123, 165, 214), QColor(105, 126, 158)),
+    CompanionState.VOICE_INPUT: (QColor(121, 172, 184), QColor(105, 126, 158)),
+    CompanionState.THINKING: (QColor(132, 151, 190), QColor(113, 123, 149)),
+    CompanionState.OUTPUT: (QColor(122, 171, 165), QColor(105, 137, 174)),
+    CompanionState.TOOL_RUNNING: (QColor(190, 157, 105), QColor(104, 145, 165)),
+    CompanionState.EXTENSION_UI: (QColor(145, 132, 183), QColor(105, 142, 168)),
+    CompanionState.ERROR: (QColor(205, 104, 119), QColor(185, 131, 93)),
+}
+
+
+def _tech_font(point_size: int = 13, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
+    font = QFont()
+    font.setFamilies(FONT_FAMILIES)
+    font.setPointSize(point_size)
+    font.setWeight(weight)
+    font.setStyleHint(QFont.StyleHint.Monospace)
+    font.setFixedPitch(True)
+    return font
+
+
 class CountdownRing(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setFixedSize(18, 18)
         self.progress = 1.0
+        self.accent = QColor(125, 178, 255, 230)
         self.hide()
+
+    def set_accent(self, color: QColor) -> None:
+        self.accent = QColor(color)
+        self.accent.setAlpha(230)
+        self.update()
 
     def set_progress(self, progress: float) -> None:
         self.progress = max(0.0, min(1.0, progress))
@@ -38,7 +68,7 @@ class CountdownRing(QWidget):
         rect = QRectF(2.5, 2.5, self.width() - 5, self.height() - 5)
         painter.setPen(QPen(QColor(255, 255, 255, 45), 2))
         painter.drawEllipse(rect)
-        painter.setPen(QPen(QColor(125, 178, 255, 230), 2.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        painter.setPen(QPen(self.accent, 2.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         painter.drawArc(rect, 90 * 16, int(-360 * self.progress * 16))
 
 
@@ -56,14 +86,18 @@ class CompanionBubble(QFrame):
         self.setStyleSheet(
             "#companion { background: transparent; border: 0; }"
             "#outputFrame { background: transparent; border: 0; }"
-            "QLabel { color: rgba(255, 255, 255, 230); font-size: 13px; } #statusLabel { color: rgba(255,255,255,160); font-size: 12px; font-weight: 600; }"
-            "QTextEdit { color: rgba(255, 255, 255, 230); background: transparent; border: none; font-size: 13px; padding: 0; margin: 0; }"
+            f"QLabel {{ color: rgba(235, 246, 255, 232); font-family: {FONT_STACK}; font-size: 13px; }}"
+            f"#hintLabel {{ color: rgba(164, 184, 205, 135); font-family: {FONT_STACK}; font-size: 11px; padding-left: 2px; }}"
+            f"#statusLabel {{ color: rgba(175, 214, 255, 160); font-family: {FONT_STACK}; font-size: 12px; font-weight: 600; }}"
+            f"QTextEdit {{ color: rgba(235, 246, 255, 232); background: transparent; border: none; font-family: {FONT_STACK}; font-size: 13px; padding: 0; margin: 0; }}"
             "QTextEdit::viewport { background: transparent; border: none; }"
-            "QLineEdit { color: rgba(255, 255, 255, 230); background: rgba(255, 255, 255, 8); border: 1px solid rgba(255, 255, 255, 18); border-radius: 10px; padding: 8px; font-size: 14px; selection-background-color: #438cff; }"
+            f"QLineEdit {{ color: rgba(238, 249, 255, 238); background: rgba(11, 16, 27, 150); border: 1px solid rgba(150, 174, 203, 58); border-radius: 12px; padding: 9px 10px; font-family: {FONT_STACK}; font-size: 14px; selection-background-color: #3f6fa8; }}"
         )
         self.state = CompanionState.HIDDEN
+        self._accent_primary, self._accent_secondary = ACCENTS[CompanionState.OUTPUT]
         self.status_label = QLabel("")
         self.status_label.setObjectName("statusLabel")
+        self.status_label.setFont(_tech_font(12, QFont.Weight.DemiBold))
         self.countdown_ring = CountdownRing()
         self.countdown_ring.setParent(self)
         self.header = QWidget()
@@ -72,12 +106,14 @@ class CompanionBubble(QFrame):
         header.addWidget(self.status_label)
         header.addStretch(1)
         self.label = QLabel("")
+        self.label.setFont(_tech_font(13))
         self.label.setWordWrap(True)
         self.output_frame = QFrame()
         self.output_frame.setObjectName("outputFrame")
         output_layout = QVBoxLayout(self.output_frame)
         output_layout.setContentsMargins(0, 0, 0, 0)
         self.output = QTextEdit()
+        self.output.setFont(_tech_font(13))
         self.output.setReadOnly(True)
         self.output.setFrameShape(QFrame.Shape.NoFrame)
         self.output.setFrameShadow(QFrame.Shadow.Plain)
@@ -91,13 +127,18 @@ class CompanionBubble(QFrame):
         output_layout.addWidget(self.output)
         self.output_frame.hide()
         self.input = QLineEdit()
-        self.input.setPlaceholderText("Ask pi...")
+        self.input.setFont(_tech_font(14))
+        self.input.setPlaceholderText("> ask pi...")
+        self.hint_label = QLabel("Enter to send | /new for new session")
+        self.hint_label.setObjectName("hintLabel")
+        self.hint_label.setFont(_tech_font(11))
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(16, 12, 16, 12)
         self.main_layout.addWidget(self.header)
         self.main_layout.addWidget(self.label)
         self.main_layout.addWidget(self.output_frame)
         self.main_layout.addWidget(self.input)
+        self.main_layout.addWidget(self.hint_label)
         self.setMinimumHeight(72)
         self.resize(380, 88)
         allow_fullscreen_overlay(self)
@@ -125,6 +166,7 @@ class CompanionBubble(QFrame):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
         allow_fullscreen_overlay(self, nonactivating=False)
         self.state = CompanionState.CHAT_INPUT
+        self._set_visual_state(self.state)
         try:
             self.input.returnPressed.disconnect()
         except (RuntimeError, TypeError):
@@ -139,8 +181,9 @@ class CompanionBubble(QFrame):
         self.label.hide()
         self.output.clear()
         self.output_frame.hide()
-        self.input.setPlaceholderText("Ask pi...")
+        self.input.setPlaceholderText("> ask pi...")
         self.input.setVisible(True)
+        self.hint_label.show()
         self._show_near_cursor(accept_keyboard=True)
         self._schedule_input_focus()
 
@@ -151,6 +194,7 @@ class CompanionBubble(QFrame):
         self._relinquish_keyboard_focus()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = CompanionState.VOICE_INPUT
+        self._set_visual_state(self.state)
         self.main_layout.setContentsMargins(16, 12, 16, 12)
         self.header.hide()
         self.status_label.setText("")
@@ -159,6 +203,7 @@ class CompanionBubble(QFrame):
         self.label.show()
         self.output_frame.hide()
         self.input.setVisible(False)
+        self.hint_label.hide()
         self._show_near_cursor()
 
     def show_status(self, text: str, state: CompanionState = CompanionState.THINKING, tool_name: str = "") -> None:
@@ -173,6 +218,7 @@ class CompanionBubble(QFrame):
         self._relinquish_keyboard_focus()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = state
+        self._set_visual_state(state)
         self._fit_final_output = False
         self._inline_final_output = False
         self.main_layout.setContentsMargins(16, 12, 16, 12)
@@ -188,6 +234,7 @@ class CompanionBubble(QFrame):
             self.output.clear()
         self.output_frame.hide()
         self.input.setVisible(False)
+        self.hint_label.hide()
         self._show_near_cursor()
 
     def begin_thinking(self) -> None:
@@ -197,6 +244,7 @@ class CompanionBubble(QFrame):
         self._relinquish_keyboard_focus()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = CompanionState.THINKING
+        self._set_visual_state(self.state)
         self._expanded_output = False
         self._fit_final_output = False
         self._inline_final_output = False
@@ -207,6 +255,7 @@ class CompanionBubble(QFrame):
         self.output.clear()
         self.output_frame.show()
         self.input.setVisible(False)
+        self.hint_label.hide()
         self._show_near_cursor(width=380)
 
     def show_stream(self, text: str) -> None:
@@ -216,6 +265,7 @@ class CompanionBubble(QFrame):
         if not self.output_frame.isVisible() or self.state != CompanionState.THINKING:
             self.begin_thinking()
         self.state = CompanionState.THINKING
+        self._set_visual_state(self.state)
         self._fit_final_output = False
         self._inline_final_output = False
         self.output.setPlainText(text)
@@ -228,6 +278,7 @@ class CompanionBubble(QFrame):
         self._relinquish_keyboard_focus()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.state = CompanionState.OUTPUT
+        self._set_visual_state(self.state)
         self._expanded_output = expanded
         self._fit_final_output = fit_to_content
         self._inline_final_output = fit_to_content and _is_inline_final_output(text) and self._inline_final_output_fits(text)
@@ -246,6 +297,7 @@ class CompanionBubble(QFrame):
             self._set_output_markdown(text)
             self.output_frame.show()
         self.input.setVisible(False)
+        self.hint_label.hide()
         self._show_near_cursor(width=self._output_width(text, expanded))
 
     def show_final_output(self, text: str) -> None:
@@ -265,6 +317,7 @@ class CompanionBubble(QFrame):
         self._inline_final_output = False
         self.header.show()
         self.label.show()
+        self.hint_label.hide()
         self.main_layout.setContentsMargins(16, 12, 16, 12)
         self.cancel_countdown()
         self._follow_timer.stop()
@@ -275,6 +328,7 @@ class CompanionBubble(QFrame):
         self._countdown_seconds = seconds
         self._countdown_started = time.monotonic()
         self.countdown_ring.set_progress(1.0)
+        self.countdown_ring.set_accent(self._accent_primary)
         self._position_countdown_ring()
         self.countdown_ring.show()
         self._countdown_timer.start(50)
@@ -367,13 +421,15 @@ class CompanionBubble(QFrame):
     def _set_output_markdown(self, text: str) -> None:
         try:
             self.output.document().setDefaultStyleSheet(
-                "body { color: rgba(255, 255, 255, 230); } "
-                "p { margin: 0 0 6px 0; } "
-                "ul, ol { margin-top: 0; margin-bottom: 6px; padding-left: 18px; } "
-                "li { margin: 0 0 2px 0; } "
-                "code { color: #d7e8ff; background-color: rgba(255, 255, 255, 18); } "
-                "pre { background-color: rgba(255, 255, 255, 14); margin: 4px 0; } "
-                "a { color: #8bbcff; }"
+                f"body {{ color: rgba(235, 246, 255, 232); font-family: {FONT_STACK}; }} "
+                "p { margin: 0 0 7px 0; } "
+                "ul, ol { margin-top: 0; margin-bottom: 7px; padding-left: 18px; } "
+                "li { margin: 0 0 3px 0; } "
+                "blockquote { color: rgba(196, 213, 232, 210); border-left: 2px solid #7ba5d6; margin: 4px 0; padding-left: 8px; } "
+                "code { color: #dcecff; background-color: rgba(126, 158, 194, 24); font-family: monospace; } "
+                "pre { color: #e4eef8; background-color: rgba(6, 11, 20, 145); border: 1px solid rgba(139, 166, 196, 42); margin: 6px 0; padding: 7px; } "
+                "a { color: #9dc2ec; text-decoration: none; } "
+                "strong { color: #ffffff; }"
             )
             self.output.setMarkdown(text)
         except AttributeError:
@@ -457,15 +513,54 @@ class CompanionBubble(QFrame):
         y = max(bounds.top(), min(y, bounds.bottom() - self.height()))
         return QPoint(x, y)
 
+    def _set_visual_state(self, state: CompanionState) -> None:
+        self._accent_primary, self._accent_secondary = ACCENTS.get(state, ACCENTS[CompanionState.OUTPUT])
+        self.countdown_ring.set_accent(self._accent_primary)
+        self.update()
+
     def paintEvent(self, event) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        bubble_path = QPainterPath()
+        bubble_path.addRoundedRect(rect, 20, 20)
+        painter.setClipPath(bubble_path)
 
-        # Base liquid glass fill - semi-transparent dark with slight blue tint
-        painter.setBrush(QColor(32, 35, 45, 155))
-        painter.setPen(QPen(QColor(255, 255, 255, 45), 1))
+        glow = QRadialGradient(rect.topLeft() + QPointF(44, 34), max(rect.width(), rect.height()) * 0.72)
+        glow_primary = QColor(self._accent_primary)
+        glow_primary.setAlpha(24)
+        glow.setColorAt(0.0, glow_primary)
+        glow.setColorAt(0.62, QColor(29, 35, 49, 80))
+        glow.setColorAt(1.0, QColor(7, 10, 20, 0))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(glow)
         painter.drawRoundedRect(rect, 20, 20)
+
+        base = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        base.setColorAt(0.0, QColor(18, 23, 33, 224))
+        base.setColorAt(0.52, QColor(22, 25, 35, 204))
+        base.setColorAt(1.0, QColor(10, 14, 22, 224))
+        painter.setBrush(base)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawPath(bubble_path)
+
+        border = QLinearGradient(rect.topLeft(), rect.topRight())
+        primary = QColor(self._accent_primary)
+        secondary = QColor(self._accent_secondary)
+        primary.setAlpha(82)
+        secondary.setAlpha(58)
+        border.setColorAt(0.0, primary)
+        border.setColorAt(0.55, QColor(255, 255, 255, 36))
+        border.setColorAt(1.0, secondary)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QBrush(border), 1.15))
+        painter.drawPath(bubble_path)
+
+        shine_path = QPainterPath()
+        shine_path.addRoundedRect(rect.adjusted(1.0, 1.0, -1.0, -rect.height() * 0.56), 19, 19)
+        painter.setClipPath(shine_path)
+        painter.setPen(QPen(QColor(255, 255, 255, 24), 1))
+        painter.drawRoundedRect(rect.adjusted(1.5, 1.5, -1.5, -1.5), 19, 19)
 
 
 def _is_inline_final_output(text: str) -> bool:
