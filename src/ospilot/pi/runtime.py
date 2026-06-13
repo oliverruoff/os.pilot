@@ -30,6 +30,23 @@ OSPILOT_FINAL_RESPONSE_HINT = """OSPilot final-response hint:
 """
 
 
+def load_session_transcript(path: Path, limit: int = 40) -> list[tuple[str, str]]:
+    messages: list[tuple[str, str]] = []
+    try:
+        with path.open("r", encoding="utf-8") as file:
+            for line in file:
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                item = _transcript_message(record)
+                if item:
+                    messages.append(item)
+    except OSError:
+        return []
+    return messages[-limit:]
+
+
 class PiRuntime:
     def __init__(self, config: AppConfig, rpc: PiRpcClient | None = None) -> None:
         self.config = config
@@ -145,22 +162,54 @@ def _metadata_title(record: dict[str, Any]) -> str:
     return ""
 
 
+def _transcript_message(record: dict[str, Any]) -> tuple[str, str] | None:
+    if record.get("type") != "message":
+        return None
+    message = record.get("message")
+    if not isinstance(message, dict):
+        return None
+    role = message.get("role")
+    if role == "user":
+        text = _message_content_text(message, include_thinking=False)
+        text = _strip_prompt_prefix(text).strip()
+        return ("You", _shorten_transcript_text(text)) if text else None
+    if role == "assistant":
+        text = _message_content_text(message, include_thinking=False).strip()
+        return ("OSPilot", _shorten_transcript_text(text)) if text else None
+    return None
+
+
+def _message_content_text(message: dict[str, Any], include_thinking: bool = False) -> str:
+    content = message.get("content")
+    parts = content if isinstance(content, list) else [content]
+    texts: list[str] = []
+    for part in parts:
+        if isinstance(part, str):
+            texts.append(part)
+        elif isinstance(part, dict):
+            part_type = str(part.get("type") or "")
+            if part_type in {"toolCall", "toolResult"}:
+                continue
+            if not include_thinking and part_type in {"thinking", "reasoning", "thought"}:
+                continue
+            value = part.get("text")
+            if isinstance(value, str):
+                texts.append(value)
+    return "\n".join(text.strip() for text in texts if text and text.strip())
+
+
+def _shorten_transcript_text(text: str, limit: int = 1200) -> str:
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3].rstrip() + "..."
+
+
 def _message_title(record: dict[str, Any]) -> str:
     message = record.get("message")
     if not isinstance(message, dict) or message.get("role") != "user":
         return ""
-    content = message.get("content")
-    parts = content if isinstance(content, list) else [content]
-    for part in parts:
-        text = ""
-        if isinstance(part, dict) and isinstance(part.get("text"), str):
-            text = part["text"]
-        elif isinstance(part, str):
-            text = part
-        text = _strip_prompt_prefix(text).strip()
-        if text:
-            return text
-    return ""
+    return _strip_prompt_prefix(_message_content_text(message, include_thinking=False)).strip()
 
 
 def _strip_prompt_prefix(text: str) -> str:

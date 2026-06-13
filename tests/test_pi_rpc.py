@@ -3,6 +3,7 @@ import asyncio
 from ospilot.app import OSPilotApp, _merge_stream_text, _tool_status_text
 from ospilot.pi.events import PiEvent, event_text, event_thinking_text, final_answer_text
 from ospilot.pi.rpc import JsonRpcMessage, PiRpcClient, PiRpcCommand, _subprocess_startup_kwargs
+from ospilot.pi.runtime import load_session_transcript
 
 
 def test_json_rpc_message_serializes_minimal_request() -> None:
@@ -11,6 +12,22 @@ def test_json_rpc_message_serializes_minimal_request() -> None:
 
 def test_pi_rpc_command_serializes_prompt() -> None:
     assert PiRpcCommand(type="prompt", id=1, message="hi").to_json() == '{"type":"prompt","id":1,"message":"hi"}'
+
+
+def test_load_session_transcript_reads_user_and_assistant_messages(tmp_path) -> None:
+    session = tmp_path / "session.jsonl"
+    session.write_text(
+        '\n'.join(
+            [
+                '{"type":"session","id":"abc"}',
+                '{"type":"message","message":{"role":"user","content":[{"type":"text","text":"hint\\nUser request: hello"}]}}',
+                '{"type":"message","message":{"role":"assistant","content":[{"type":"thinking","thinking":"hidden"},{"type":"text","text":"hi there"},{"type":"toolCall","name":"bash"}]}}',
+                '{"type":"message","message":{"role":"toolResult","content":[{"type":"text","text":"ignored"}]}}',
+            ]
+        )
+    )
+
+    assert load_session_transcript(session) == [("You", "hello"), ("OSPilot", "hi there")]
 
 
 def test_route_message_resolves_pending_response() -> None:

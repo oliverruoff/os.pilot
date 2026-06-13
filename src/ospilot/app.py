@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 import threading
+import time
 from concurrent.futures import CancelledError
 
 from PySide6.QtCore import QObject, QTimer, Signal
@@ -15,7 +16,7 @@ from ospilot.desktop import create_desktop_backend
 from ospilot.desktop.registry import build_default_registry
 from ospilot.ipc import IpcServer
 from ospilot.pi.events import event_text, event_thinking_text, final_answer_text
-from ospilot.pi.runtime import PiRuntime, PiSession
+from ospilot.pi.runtime import PiRuntime, PiSession, load_session_transcript
 from ospilot.ui import CompanionBubble, CompanionState, CursorHalo, TrayController
 
 
@@ -26,6 +27,7 @@ class UiDispatch(QObject):
     local_tool = Signal(str, str)
     companion_message = Signal(str)
     overlay_visibility = Signal(bool, object)
+    desktop_input_activity = Signal(str)
 
 
 class OSPilotApp:
@@ -51,6 +53,7 @@ class OSPilotApp:
         self._message_role = ""
         self._conversation_history: list[tuple[str, str]] = []
         self._active_prompt = False
+        self._keep_output_open_for_turn = False
         self._desktop_input_app_pid: int | None = None
         self._watchdog = QTimer()
         self._watchdog.setSingleShot(True)
@@ -59,8 +62,22 @@ class OSPilotApp:
         self.companion = CompanionBubble()
         self.ui_dispatch.companion_message.connect(self.companion.show_output)
         self.ui_dispatch.overlay_visibility.connect(self._apply_overlay_visibility)
+        self.ui_dispatch.desktop_input_activity.connect(self._apply_desktop_input_activity)
         self.halo = CursorHalo()
-        self.registry = build_default_registry(self.config, self.desktop, self._emit_companion_message, self._emit_local_tool_state, self._set_screenshot_overlay_visibility, self._prepare_desktop_input)
+        self._passive_companion_suppressed_until = 0.0
+        self._pending_passive_companion: tuple[str, tuple, dict] | None = None
+        self._passive_flush_timer = QTimer()
+        self._passive_flush_timer.setSingleShot(True)
+        self._passive_flush_timer.timeout.connect(self._flush_pending_passive_companion)
+        self.registry = build_default_registry(
+            self.config,
+            self.desktop,
+            self._emit_companion_message,
+            self._emit_local_tool_state,
+            self._set_screenshot_overlay_visibility,
+            self._prepare_desktop_input,
+            self._finish_desktop_input,
+        )
         self.ipc = IpcServer(self.registry)
         self.runtime = PiRuntime(self.config)
         self.runtime.rpc.add_event_handler(self._on_pi_event)
@@ -99,7 +116,7 @@ class OSPilotApp:
     def open_chat(self) -> None:
         self.logger.info("open_chat")
         self._remember_desktop_input_target()
-        self.companion.show_chat(self.submit_prompt)
+        self.companion.show_chat(self.submit_prompt, self._conversation_history)
 
     def open_voice(self) -> None:
         self.logger.info("open_voice")
@@ -118,6 +135,7 @@ class OSPilotApp:
             return
         self._conversation_history.append(("You", text))
         self.companion.begin_thinking()
+        self._keep_output_open_for_turn = False
         self._stream_buffer = ""
         self._thinking_buffer = ""
         self._last_output = ""
@@ -143,7 +161,7 @@ class OSPilotApp:
         self._watchdog.stop()
         self.desktop.stop()
         self.halo.hide_halo()
-        self._conversation_history.clear()
+        self._conversation_history = load_session_transcript(session.path)
         message = f"Switching pi session: {session.title}"
         self.companion.show_status(message)
         self.companion.start_countdown(message)
@@ -154,13 +172,19 @@ class OSPilotApp:
 
     def show_last_answer(self) -> None:
         self.logger.info("show_last_answer")
-        text = self._last_final_output or final_answer_text(self._last_output)
+        self._keep_output_open_for_turn = True
+        self._pending_passive_companion = None
+        self._passive_companion_suppressed_until = 0.0
+        self._passive_flush_timer.stop()
+        self.halo.hide_halo()
+        text = self._last_final_output or final_answer_text(self._last_output) or self._thinking_buffer or self._stream_buffer
         if not text:
             return
         if self._conversation_history:
             self.companion.show_final_transcript(self._conversation_history, text)
         else:
             self.companion.show_output(text, expanded=False, fit_to_content=True)
+        self.companion.cancel_countdown()
 
     def stop(self) -> None:
         self.logger.info("stop")
@@ -194,7 +218,7 @@ class OSPilotApp:
             self._watchdog.start(45_000)
         if event_type in {"agent_start", "turn_start", "auto_retry_start"}:
             if thinking_text or text:
-                self.companion.show_stream(thinking_text or text)
+                self._show_passive_companion("show_stream", thinking_text or text)
         elif event_type == "message_start":
             self._message_role = role
             if role != "user":
@@ -203,24 +227,24 @@ class OSPilotApp:
         elif event_type == "message_update" and self._message_role != "user":
             if thinking_text:
                 self._thinking_buffer = self._merge_stream_text(self._thinking_buffer, thinking_text)
-                self.companion.show_stream(self._thinking_buffer)
+                self._show_passive_companion("show_stream", self._thinking_buffer)
             if text:
                 self._stream_buffer = self._merge_stream_text(self._stream_buffer, text)
                 self._last_output = self._stream_buffer
                 if not thinking_text:
-                    self.companion.show_stream(self._stream_buffer)
+                    self._show_passive_companion("show_stream", self._stream_buffer)
         elif event_type == "message_end" and text and role != "user":
             self._stream_buffer = text
             self._last_output = self._stream_buffer
         elif event_type == "tool_execution_start":
-            self.companion.show_status(_tool_status_text(text, tool_name), CompanionState.TOOL_RUNNING, tool_name)
+            self._show_passive_companion("show_status", _tool_status_text(text, tool_name), CompanionState.TOOL_RUNNING, tool_name)
         elif event_type == "tool_execution_update":
-            self.companion.show_status(_tool_status_text(text, tool_name), CompanionState.TOOL_RUNNING, tool_name)
+            self._show_passive_companion("show_status", _tool_status_text(text, tool_name), CompanionState.TOOL_RUNNING, tool_name)
         elif event_type == "tool_execution_end":
             if self._last_output:
-                self.companion.show_stream(self._thinking_buffer or self._stream_buffer)
+                self._show_passive_companion("show_stream", self._thinking_buffer or self._stream_buffer)
             else:
-                self.companion.show_status(_tool_status_text(text, tool_name, finished=True), CompanionState.TOOL_RUNNING, tool_name)
+                self._show_passive_companion("show_status", _tool_status_text(text, tool_name, finished=True), CompanionState.TOOL_RUNNING, tool_name)
         elif event_type in {"agent_end", "auto_retry_end"}:
             self._active_prompt = False
             self._watchdog.stop()
@@ -231,20 +255,22 @@ class OSPilotApp:
                 final_text = final_answer_text(text) or "Done."
             self._last_final_output = final_text
             self._conversation_history.append(("OSPilot", final_text))
-            self.companion.show_final_transcript(self._conversation_history, final_text)
+            self._show_passive_companion("show_final_transcript", self._conversation_history, final_text, force=True)
+            if self._keep_output_open_for_turn:
+                self.companion.cancel_countdown()
         elif event_type in {"extension_error"}:
             self._active_prompt = False
             self._watchdog.stop()
-            self.companion.show_status(text or "Extension error", CompanionState.ERROR, tool_name)
+            self._show_passive_companion("show_status", text or "Extension error", CompanionState.ERROR, tool_name, force=True)
             self.halo.show_halo("error")
         elif event_type == "extension_ui_request":
-            self.companion.show_status(text or "pi requests input", CompanionState.EXTENSION_UI, tool_name)
+            self._show_passive_companion("show_status", text or "pi requests input", CompanionState.EXTENSION_UI, tool_name)
 
     def _show_error(self, message: str) -> None:
         self._active_prompt = False
         self._watchdog.stop()
         self.halo.hide_halo()
-        self.companion.show_status(message, CompanionState.ERROR)
+        self._show_passive_companion("show_status", message, CompanionState.ERROR)
 
     def _emit_local_tool_state(self, name: str, state: str) -> None:
         self.ui_dispatch.local_tool.emit(name, state)
@@ -261,12 +287,62 @@ class OSPilotApp:
         try:
             if visible:
                 if self._active_prompt:
-                    self.companion.show_status("Looking at your screen...", CompanionState.TOOL_RUNNING, "screenshot")
+                    self._show_passive_companion("show_status", "Looking at your screen...", CompanionState.TOOL_RUNNING, "screenshot")
             else:
                 self.halo.hide_halo()
                 self.companion.hide()
         finally:
             done.set()
+
+    def _show_passive_companion(self, method: str, *args, force: bool = False, **kwargs) -> None:
+        if force:
+            self._pending_passive_companion = None
+            self._passive_companion_suppressed_until = 0.0
+            self._passive_flush_timer.stop()
+            self.halo.hide_halo()
+            getattr(self.companion, method)(*args, **kwargs)
+            return
+        if time.monotonic() < self._passive_companion_suppressed_until:
+            self._pending_passive_companion = (method, args, kwargs)
+            self.halo.show_halo("control", self._passive_companion_summary(method, args))
+            self._schedule_passive_companion_flush()
+            return
+        getattr(self.companion, method)(*args, **kwargs)
+
+    def _passive_companion_summary(self, method: str, args: tuple) -> str:
+        if method == "show_status" and args:
+            return str(args[0]) or "Controlling UI…"
+        if method == "show_stream" and args:
+            return str(args[0]).strip().splitlines()[-1] or "Thinking…"
+        if method == "show_final_transcript":
+            return "Done."
+        return "Controlling UI…"
+
+    def _schedule_passive_companion_flush(self) -> None:
+        remaining = self._passive_companion_suppressed_until - time.monotonic()
+        delay_ms = max(50, int(remaining * 1000))
+        self._passive_flush_timer.start(delay_ms)
+
+    def _flush_pending_passive_companion(self) -> None:
+        if time.monotonic() < self._passive_companion_suppressed_until:
+            self._schedule_passive_companion_flush()
+            return
+        pending = self._pending_passive_companion
+        self._pending_passive_companion = None
+        if pending:
+            method, args, kwargs = pending
+            getattr(self.companion, method)(*args, **kwargs)
+        if not self._active_prompt:
+            self.halo.hide_halo()
+
+    def _apply_desktop_input_activity(self, state: str) -> None:
+        now = time.monotonic()
+        self._passive_companion_suppressed_until = max(self._passive_companion_suppressed_until, now + (0.55 if state == "start" else 0.25))
+        if state == "start":
+            self._pending_passive_companion = None
+            self.companion.hide()
+            self.halo.show_halo("control", "Controlling UI…")
+        self._schedule_passive_companion_flush()
 
     def _remember_desktop_input_target(self) -> None:
         context = self.desktop.get_active_context()
@@ -280,11 +356,15 @@ class OSPilotApp:
         self.logger.info("desktop input target app=%s pid=%s", app.get("name") or "", pid)
 
     def _prepare_desktop_input(self) -> None:
+        self.ui_dispatch.desktop_input_activity.emit("start")
         if not self._desktop_input_app_pid:
             return
         result = self.desktop.focus_app(self._desktop_input_app_pid)
         if not result.get("ok"):
             self.logger.info("focus desktop input target failed: %s", result.get("error") or result)
+
+    def _finish_desktop_input(self) -> None:
+        self.ui_dispatch.desktop_input_activity.emit("end")
 
     def _apply_local_tool_state(self, name: str, state: str) -> None:
         if name == "ospilot_move_mouse":

@@ -245,7 +245,7 @@ class CompanionBubble(QFrame):
         if self.isVisible():
             self.reset()
 
-    def show_chat(self, on_submit) -> None:
+    def show_chat(self, on_submit, messages: list[tuple[str, str]] | None = None) -> None:
         self.cancel_countdown()
         self.setMinimumHeight(72)
         self._set_mouse_passthrough(False)
@@ -273,14 +273,23 @@ class CompanionBubble(QFrame):
         self.label.setText("")
         self.label.hide()
         self.output.clear()
-        self.output.show()
-        self.transcript.hide()
-        self.output_frame.hide()
+        transcript_messages = list(messages or [])
+        if transcript_messages:
+            self._showing_transcript = True
+            self.output.hide()
+            self.transcript.set_messages(transcript_messages)
+            self.transcript.show()
+            self.output_frame.show()
+        else:
+            self.output.show()
+            self.transcript.hide()
+            self.output_frame.hide()
         self.output_hint_label.hide()
         self.input.setPlaceholderText("> ask pi...")
         self.input.setVisible(True)
         self.hint_label.show()
-        self._show_near_cursor(accept_keyboard=True)
+        width = self._transcript_width(transcript_messages) if transcript_messages else 380
+        self._show_near_cursor(width=width, accept_keyboard=True)
         self._schedule_input_focus()
 
     def show_voice_placeholder(self) -> None:
@@ -497,6 +506,7 @@ class CompanionBubble(QFrame):
 
     def _show_near_cursor(self, width: int = 380, accept_keyboard: bool = False) -> None:
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, not accept_keyboard)
+        self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, not accept_keyboard)
         self.setFixedWidth(width)
         if self.output_frame.isVisible():
             self._fit_output_to_text(width)
@@ -512,11 +522,16 @@ class CompanionBubble(QFrame):
             allow_fullscreen_overlay(self, nonactivating=not accept_keyboard)
         if not self._follow_timer.isActive():
             self._follow_timer.start(16)
-        self.raise_()
         if accept_keyboard:
+            self.raise_()
             order_front(self, make_key=True)
             self._focus_input()
         else:
+            # Passive thinking/status updates must be visible without stealing
+            # focus; otherwise fragile macOS UI such as open menus/popovers can
+            # disappear between tool clicks.
+            if sys.platform != "darwin":
+                self.raise_()
             order_front(self)
 
     def _focus_input(self) -> None:
