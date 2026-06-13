@@ -73,9 +73,11 @@ def _desktop_input(
     after_desktop_input: Callable[[], None] | None,
     action: Callable[[], dict[str, Any]],
 ) -> dict[str, Any]:
-    if screenshot_visibility:
-        screenshot_visibility(False)
-        time.sleep(0.15)
+    del screenshot_visibility
+    # Keep the companion visible during control actions. The passive companion
+    # window is non-activating and mouse-transparent, so it should not steal
+    # focus or receive the click/key input. Screenshots still use
+    # _without_overlay() and hide it explicitly.
     if before_desktop_input:
         before_desktop_input()
         time.sleep(0.15)

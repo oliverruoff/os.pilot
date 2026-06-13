@@ -55,9 +55,13 @@ class OSPilotApp:
         self._active_prompt = False
         self._keep_output_open_for_turn = False
         self._desktop_input_app_pid: int | None = None
+        self._desktop_input_active = False
         self._watchdog = QTimer()
         self._watchdog.setSingleShot(True)
         self._watchdog.timeout.connect(self._handle_prompt_timeout)
+        self._companion_visibility_timer = QTimer()
+        self._companion_visibility_timer.timeout.connect(self._ensure_active_companion_visible)
+        self._overlay_temporarily_hidden = False
 
         self.companion = CompanionBubble()
         self.ui_dispatch.companion_message.connect(self.companion.show_output)
@@ -142,6 +146,7 @@ class OSPilotApp:
         self._message_role = ""
         self._active_prompt = True
         self._watchdog.start(45_000)
+        self._companion_visibility_timer.start(500)
         self._schedule(self.runtime.prompt(text), "send prompt")
 
     def new_session(self) -> None:
@@ -190,6 +195,7 @@ class OSPilotApp:
         self.logger.info("stop")
         self._active_prompt = False
         self._watchdog.stop()
+        self._companion_visibility_timer.stop()
         self.desktop.stop()
         self.halo.hide_halo()
         self.companion.reset()
@@ -248,6 +254,7 @@ class OSPilotApp:
         elif event_type in {"agent_end", "auto_retry_end"}:
             self._active_prompt = False
             self._watchdog.stop()
+            self._companion_visibility_timer.stop()
             self.halo.hide_halo()
             if self._last_output:
                 final_text = final_answer_text(self._last_output)
@@ -261,6 +268,7 @@ class OSPilotApp:
         elif event_type in {"extension_error"}:
             self._active_prompt = False
             self._watchdog.stop()
+            self._companion_visibility_timer.stop()
             self._show_passive_companion("show_status", text or "Extension error", CompanionState.ERROR, tool_name, force=True)
             self.halo.show_halo("error")
         elif event_type == "extension_ui_request":
@@ -269,6 +277,7 @@ class OSPilotApp:
     def _show_error(self, message: str) -> None:
         self._active_prompt = False
         self._watchdog.stop()
+        self._companion_visibility_timer.stop()
         self.halo.hide_halo()
         self._show_passive_companion("show_status", message, CompanionState.ERROR)
 
@@ -285,14 +294,21 @@ class OSPilotApp:
 
     def _apply_overlay_visibility(self, visible: bool, done) -> None:
         try:
+            self._overlay_temporarily_hidden = not visible
             if visible:
                 if self._active_prompt:
-                    self._show_passive_companion("show_status", "Looking at your screen...", CompanionState.TOOL_RUNNING, "screenshot")
+                    text = self._thinking_buffer or self._stream_buffer or "Looking at your screen..."
+                    self._show_passive_companion("show_stream", text)
             else:
-                self.halo.hide_halo()
+                self.halo.show_halo("control", "Looking at your screen…")
                 self.companion.hide()
         finally:
             done.set()
+
+    def _ensure_active_companion_visible(self) -> None:
+        if not self._active_prompt or self._overlay_temporarily_hidden:
+            return
+        self.companion.show_stream(self._thinking_buffer or self._stream_buffer or "Thinking...")
 
     def _show_passive_companion(self, method: str, *args, force: bool = False, **kwargs) -> None:
         if force:
@@ -336,13 +352,21 @@ class OSPilotApp:
             self.halo.hide_halo()
 
     def _apply_desktop_input_activity(self, state: str) -> None:
-        now = time.monotonic()
-        self._passive_companion_suppressed_until = max(self._passive_companion_suppressed_until, now + (0.55 if state == "start" else 0.25))
+        self._desktop_input_active = state == "start"
         if state == "start":
             self._pending_passive_companion = None
-            self.companion.hide()
+            self._passive_companion_suppressed_until = 0.0
+            self._passive_flush_timer.stop()
             self.halo.show_halo("control", "Controlling UI…")
-        self._schedule_passive_companion_flush()
+            if self._active_prompt:
+                visible_text = self._thinking_buffer or self._stream_buffer
+                if visible_text.strip():
+                    self.companion.show_stream(visible_text)
+                else:
+                    self.companion.show_status("Controlling UI…", CompanionState.TOOL_RUNNING)
+            return
+        if not self._active_prompt:
+            self.halo.hide_halo()
 
     def _remember_desktop_input_target(self) -> None:
         context = self.desktop.get_active_context()
@@ -377,6 +401,7 @@ class OSPilotApp:
         if not self._active_prompt:
             return
         self._active_prompt = False
+        self._companion_visibility_timer.stop()
         self.halo.hide_halo()
         if self._last_output:
             self.companion.show_output(final_answer_text(self._last_output))

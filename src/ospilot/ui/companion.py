@@ -145,7 +145,13 @@ _TEXT_FLAGS = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.Te
 
 class CompanionBubble(QFrame):
     def __init__(self) -> None:
-        super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        # Do not use Qt.Tool on macOS: AppKit/Qt may hide tool panels as soon
+        # as OSPilot loses activation, which is exactly what happens after the
+        # user presses Enter and we focus/click/type in the target app. Use a
+        # normal borderless top-level overlay instead and make it non-activating
+        # via allow_fullscreen_overlay() for passive thinking/status updates.
+        window_type = Qt.WindowType.Window if sys.platform == "darwin" else Qt.WindowType.Tool
+        super().__init__(None, window_type | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
@@ -230,6 +236,7 @@ class CompanionBubble(QFrame):
         self._inline_final_output = False
         self._showing_transcript = False
         self._mouse_passthrough = False
+        self._passive_front_attempt = 0
         self._escape_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         self._escape_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
         self._escape_shortcut.activated.connect(self._hide_from_escape)
@@ -529,10 +536,27 @@ class CompanionBubble(QFrame):
         else:
             # Passive thinking/status updates must be visible without stealing
             # focus; otherwise fragile macOS UI such as open menus/popovers can
-            # disappear between tool clicks.
-            if sys.platform != "darwin":
-                self.raise_()
-            order_front(self)
+            # disappear between tool clicks. Re-order a few times because the
+            # foreground app may be changing exactly when the user submits a
+            # prompt or when OSPilot focuses the target app for a click/type.
+            self._schedule_passive_order_front()
+
+    def _order_passive_front(self, attempt: int) -> None:
+        if attempt != self._passive_front_attempt or self.state == CompanionState.HIDDEN:
+            return
+        if not self.isVisible():
+            self.show()
+        allow_fullscreen_overlay(self, nonactivating=True)
+        if sys.platform != "darwin":
+            self.raise_()
+        order_front(self)
+
+    def _schedule_passive_order_front(self) -> None:
+        self._passive_front_attempt += 1
+        attempt = self._passive_front_attempt
+        self._order_passive_front(attempt)
+        for delay_ms in (50, 150, 300):
+            QTimer.singleShot(delay_ms, lambda attempt=attempt: self._order_passive_front(attempt))
 
     def _focus_input(self) -> None:
         if self.state != CompanionState.CHAT_INPUT or not self.input.isVisible():
