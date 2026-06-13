@@ -49,6 +49,7 @@ class OSPilotApp:
         self._last_output = ""
         self._last_final_output = ""
         self._message_role = ""
+        self._conversation_history: list[tuple[str, str]] = []
         self._active_prompt = False
         self._desktop_input_app_pid: int | None = None
         self._watchdog = QTimer()
@@ -115,6 +116,7 @@ class OSPilotApp:
         if text == "/new":
             self.new_session()
             return
+        self._conversation_history.append(("You", text))
         self.companion.begin_thinking()
         self._stream_buffer = ""
         self._thinking_buffer = ""
@@ -126,6 +128,7 @@ class OSPilotApp:
 
     def new_session(self) -> None:
         self.logger.info("new_session")
+        self._conversation_history.clear()
         message = "Starting new pi session..."
         self.companion.show_status(message)
         self.companion.start_countdown(message)
@@ -140,6 +143,7 @@ class OSPilotApp:
         self._watchdog.stop()
         self.desktop.stop()
         self.halo.hide_halo()
+        self._conversation_history.clear()
         message = f"Switching pi session: {session.title}"
         self.companion.show_status(message)
         self.companion.start_countdown(message)
@@ -153,7 +157,10 @@ class OSPilotApp:
         text = self._last_final_output or final_answer_text(self._last_output)
         if not text:
             return
-        self.companion.show_output(text, expanded=False, fit_to_content=True)
+        if self._conversation_history:
+            self.companion.show_final_transcript(self._conversation_history, text)
+        else:
+            self.companion.show_output(text, expanded=False, fit_to_content=True)
 
     def stop(self) -> None:
         self.logger.info("stop")
@@ -223,7 +230,8 @@ class OSPilotApp:
             else:
                 final_text = final_answer_text(text) or "Done."
             self._last_final_output = final_text
-            self.companion.show_final_output(final_text)
+            self._conversation_history.append(("OSPilot", final_text))
+            self.companion.show_final_transcript(self._conversation_history, final_text)
         elif event_type in {"extension_error"}:
             self._active_prompt = False
             self._watchdog.stop()

@@ -4,7 +4,7 @@ import sys
 import time
 from enum import StrEnum
 
-from PySide6.QtCore import QPoint, QRectF, QTimer, Qt
+from PySide6.QtCore import QPoint, QRect, QRectF, QSize, QTimer, Qt
 from PySide6.QtGui import QColor, QCursor, QFont, QKeySequence, QPainter, QPen, QShortcut
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLineEdit, QLabel, QTextEdit, QVBoxLayout, QWidget
 
@@ -77,6 +77,72 @@ COUNTDOWN_RING_RIGHT_PADDING = 9
 COUNTDOWN_RING_TEXT_GAP = 10
 
 
+class TranscriptView(QWidget):
+    def __init__(self) -> None:
+        super().__init__()
+        self._messages: list[tuple[str, str]] = []
+        self._block_gap = 10
+        self._line_gap = 2
+        self._text_width = 320
+        self._base_color = QColor(235, 246, 255)
+        self.setFont(_tech_font(13))
+        self.setSizePolicy(self.sizePolicy().horizontalPolicy(), self.sizePolicy().verticalPolicy())
+
+    def set_messages(self, messages: list[tuple[str, str]]) -> None:
+        self._messages = [(speaker, text.strip()) for speaker, text in messages if text.strip()]
+        self.updateGeometry()
+        self.update()
+
+    def set_text_width(self, width: int) -> None:
+        self._text_width = max(80, width)
+        self.updateGeometry()
+        self.update()
+
+    def content_height(self) -> int:
+        if not self._messages:
+            return self.fontMetrics().lineSpacing() + 8
+        total = 0
+        for index, (speaker, text) in enumerate(self._messages):
+            total += self._block_height(speaker, text)
+            if index:
+                total += self._block_gap
+        return total
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        return QSize(self._text_width, self.content_height())
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        del event
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        painter.setFont(self.font())
+        y = self.height()
+        for speaker, text in reversed(self._messages):
+            block_height = self._block_height(speaker, text)
+            y -= block_height
+            if y < self.height() and y + block_height > 0:
+                center = y + block_height / 2
+                progress = max(0.0, min(1.0, center / max(1, self.height())))
+                alpha = int(55 + (232 - 55) * progress)
+                color = QColor(self._base_color)
+                color.setAlpha(alpha)
+                painter.setPen(color)
+                painter.drawText(QRect(0, int(y), self._text_width, block_height), _TEXT_FLAGS, self._format_block(speaker, text))
+            y -= self._block_gap
+            if y + block_height < 0:
+                break
+
+    def _block_height(self, speaker: str, text: str) -> int:
+        rect = self.fontMetrics().boundingRect(QRect(0, 0, self._text_width, 10000), _TEXT_FLAGS, self._format_block(speaker, text))
+        return max(self.fontMetrics().lineSpacing(), rect.height()) + self._line_gap
+
+    def _format_block(self, speaker: str, text: str) -> str:
+        return f"{speaker}: {text}"
+
+
+_TEXT_FLAGS = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap)
+
+
 class CompanionBubble(QFrame):
     def __init__(self) -> None:
         super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
@@ -127,6 +193,9 @@ class CompanionBubble(QFrame):
         self.output.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.output.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
         output_layout.addWidget(self.output)
+        self.transcript = TranscriptView()
+        output_layout.addWidget(self.transcript)
+        self.transcript.hide()
         self.output_frame.hide()
         self.output_hint_label = QLabel(_output_shortcut_hint())
         self.output_hint_label.setObjectName("outputHintLabel")
@@ -159,6 +228,7 @@ class CompanionBubble(QFrame):
         self._expanded_output = False
         self._fit_final_output = False
         self._inline_final_output = False
+        self._showing_transcript = False
         self._mouse_passthrough = False
         self._escape_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         self._escape_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
@@ -199,9 +269,12 @@ class CompanionBubble(QFrame):
         self.status_label.setText("")
         self.label.setMaximumHeight(16777215)
         self._inline_final_output = False
+        self._showing_transcript = False
         self.label.setText("")
         self.label.hide()
         self.output.clear()
+        self.output.show()
+        self.transcript.hide()
         self.output_frame.hide()
         self.output_hint_label.hide()
         self.input.setPlaceholderText("> ask pi...")
@@ -224,6 +297,9 @@ class CompanionBubble(QFrame):
         self.label.setMaximumHeight(16777215)
         self.label.setText("Voice input placeholder. Type support can be wired next.")
         self.label.show()
+        self._showing_transcript = False
+        self.output.show()
+        self.transcript.hide()
         self.output_frame.hide()
         self.output_hint_label.hide()
         self.input.setVisible(False)
@@ -245,6 +321,7 @@ class CompanionBubble(QFrame):
         self._set_visual_state(state)
         self._fit_final_output = False
         self._inline_final_output = False
+        self._showing_transcript = False
         self.main_layout.setContentsMargins(16, 12, 16, 12)
         self.header.hide()
         self.status_label.setText("")
@@ -256,6 +333,8 @@ class CompanionBubble(QFrame):
         self.label.setVisible(bool(text))
         if state == CompanionState.THINKING:
             self.output.clear()
+        self.output.show()
+        self.transcript.hide()
         self.output_frame.hide()
         self.output_hint_label.hide()
         self.input.setVisible(False)
@@ -273,10 +352,13 @@ class CompanionBubble(QFrame):
         self._expanded_output = False
         self._fit_final_output = False
         self._inline_final_output = False
+        self._showing_transcript = False
         self.main_layout.setContentsMargins(12, 8, 30, 8)
         self.header.hide()
         self.status_label.setText("")
         self.label.hide()
+        self.transcript.hide()
+        self.output.show()
         self.output.setPlainText("Thinking...")
         self.output_frame.show()
         self.output_hint_label.hide()
@@ -294,6 +376,9 @@ class CompanionBubble(QFrame):
         self._set_visual_state(self.state)
         self._fit_final_output = False
         self._inline_final_output = False
+        self._showing_transcript = False
+        self.transcript.hide()
+        self.output.show()
         if not text.strip():
             text = "Thinking..."
         self.output.setPlainText(text)
@@ -310,6 +395,9 @@ class CompanionBubble(QFrame):
         self._expanded_output = expanded
         self._fit_final_output = fit_to_content
         self._inline_final_output = fit_to_content and _is_inline_final_output(text) and self._inline_final_output_fits(text)
+        self._showing_transcript = False
+        self.transcript.hide()
+        self.output.show()
         right_margin = self._countdown_reserved_margin() if fit_to_content else 30
         self.main_layout.setContentsMargins(12, 8, right_margin, 8)
         self.header.hide()
@@ -334,6 +422,33 @@ class CompanionBubble(QFrame):
         self.show_output(text, expanded=False, fit_to_content=True)
         self.start_countdown(text)
 
+    def show_final_transcript(self, messages: list[tuple[str, str]], countdown_text: str = "") -> None:
+        self.cancel_countdown()
+        self.setMinimumHeight(0)
+        self._set_mouse_passthrough(True)
+        self._relinquish_keyboard_focus()
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.state = CompanionState.OUTPUT
+        self._set_visual_state(self.state)
+        self._expanded_output = False
+        self._fit_final_output = True
+        self._inline_final_output = False
+        self._showing_transcript = True
+        self.main_layout.setContentsMargins(12, 8, self._countdown_reserved_margin(), 8)
+        self.header.hide()
+        self.label.hide()
+        self.output.hide()
+        self.transcript.set_messages(messages)
+        self.transcript.show()
+        self.output_frame.show()
+        self.output_hint_label.setText(_output_shortcut_hint())
+        self.output_hint_label.show()
+        self.input.setVisible(False)
+        self.hint_label.hide()
+        width = self._transcript_width(messages)
+        self._show_near_cursor(width=width)
+        self.start_countdown(countdown_text or "\n".join(f"{speaker}: {text}" for speaker, text in messages))
+
     def reset(self) -> None:
         self.setMinimumHeight(72)
         self._set_mouse_passthrough(False)
@@ -345,6 +460,9 @@ class CompanionBubble(QFrame):
         self._expanded_output = False
         self._fit_final_output = False
         self._inline_final_output = False
+        self._showing_transcript = False
+        self.output.show()
+        self.transcript.hide()
         self.header.show()
         self.label.show()
         self.output_hint_label.hide()
@@ -466,6 +584,16 @@ class CompanionBubble(QFrame):
         except AttributeError:
             self.output.setPlainText(text)
 
+    def _transcript_width(self, messages: list[tuple[str, str]]) -> int:
+        hint_min_width = self._output_hint_min_width()
+        longest = ""
+        for speaker, text in messages:
+            for line in f"{speaker}: {text}".splitlines():
+                if len(line) > len(longest):
+                    longest = line
+        text_width = self.transcript.fontMetrics().horizontalAdvance(longest)
+        return max(hint_min_width, 300, min(460, text_width + 56))
+
     def _output_width(self, text: str, expanded: bool) -> int:
         hint_min_width = self._output_hint_min_width()
         if not expanded:
@@ -487,6 +615,17 @@ class CompanionBubble(QFrame):
     def _fit_output_to_text(self, width: int) -> None:
         frame_padding = 18
         text_width = max(80, width - 28 - frame_padding)
+        if self._showing_transcript:
+            self.transcript.set_text_width(text_width)
+            row_height = self.transcript.fontMetrics().lineSpacing()
+            cursor = QCursor.pos()
+            screen = QApplication.screenAt(cursor) or QApplication.primaryScreen()
+            bounds = screen.availableGeometry() if screen else QApplication.primaryScreen().availableGeometry()
+            max_text_height = max(row_height * 4, bounds.height() - 160)
+            text_height = max(row_height + 8, min(self.transcript.content_height() + 4, max_text_height))
+            self.transcript.setFixedHeight(int(text_height))
+            self.output_frame.setFixedHeight(int(text_height))
+            return
         self.output.document().setTextWidth(text_width)
         document_height = self.output.document().size().height()
         row_height = self.output.fontMetrics().lineSpacing()
