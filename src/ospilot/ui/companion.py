@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import time
 from enum import StrEnum
 
@@ -88,6 +89,7 @@ class CompanionBubble(QFrame):
             "#outputFrame { background: transparent; border: 0; }"
             f"QLabel {{ color: rgba(235, 246, 255, 232); font-family: {FONT_STACK}; font-size: 13px; }}"
             f"#hintLabel {{ color: rgba(164, 184, 205, 135); font-family: {FONT_STACK}; font-size: 11px; padding-left: 2px; }}"
+            f"#outputHintLabel {{ color: rgba(172, 186, 202, 105); font-family: {FONT_STACK}; font-size: 10px; padding-top: 1px; }}"
             f"#statusLabel {{ color: rgba(175, 214, 255, 160); font-family: {FONT_STACK}; font-size: 12px; font-weight: 600; }}"
             f"QTextEdit {{ color: rgba(235, 246, 255, 232); background: transparent; border: none; font-family: {FONT_STACK}; font-size: 13px; padding: 0; margin: 0; }}"
             "QTextEdit::viewport { background: transparent; border: none; }"
@@ -126,6 +128,11 @@ class CompanionBubble(QFrame):
         self.output.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
         output_layout.addWidget(self.output)
         self.output_frame.hide()
+        self.output_hint_label = QLabel(_output_shortcut_hint())
+        self.output_hint_label.setObjectName("outputHintLabel")
+        self.output_hint_label.setFont(_tech_font(10))
+        self.output_hint_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.output_hint_label.hide()
         self.input = QLineEdit()
         self.input.setFont(_tech_font(14))
         self.input.setPlaceholderText("> ask pi...")
@@ -137,6 +144,7 @@ class CompanionBubble(QFrame):
         self.main_layout.addWidget(self.header)
         self.main_layout.addWidget(self.label)
         self.main_layout.addWidget(self.output_frame)
+        self.main_layout.addWidget(self.output_hint_label)
         self.main_layout.addWidget(self.input)
         self.main_layout.addWidget(self.hint_label)
         self.setMinimumHeight(72)
@@ -195,6 +203,7 @@ class CompanionBubble(QFrame):
         self.label.hide()
         self.output.clear()
         self.output_frame.hide()
+        self.output_hint_label.hide()
         self.input.setPlaceholderText("> ask pi...")
         self.input.setVisible(True)
         self.hint_label.show()
@@ -216,6 +225,7 @@ class CompanionBubble(QFrame):
         self.label.setText("Voice input placeholder. Type support can be wired next.")
         self.label.show()
         self.output_frame.hide()
+        self.output_hint_label.hide()
         self.input.setVisible(False)
         self.hint_label.hide()
         self._show_near_cursor()
@@ -247,6 +257,7 @@ class CompanionBubble(QFrame):
         if state == CompanionState.THINKING:
             self.output.clear()
         self.output_frame.hide()
+        self.output_hint_label.hide()
         self.input.setVisible(False)
         self.hint_label.hide()
         self._show_near_cursor()
@@ -268,6 +279,7 @@ class CompanionBubble(QFrame):
         self.label.hide()
         self.output.setPlainText("Thinking...")
         self.output_frame.show()
+        self.output_hint_label.hide()
         self.input.setVisible(False)
         self.hint_label.hide()
         self._show_near_cursor(width=380)
@@ -312,6 +324,8 @@ class CompanionBubble(QFrame):
             self.label.hide()
             self._set_output_markdown(text)
             self.output_frame.show()
+        self.output_hint_label.setText(_output_shortcut_hint())
+        self.output_hint_label.show()
         self.input.setVisible(False)
         self.hint_label.hide()
         self._show_near_cursor(width=self._output_width(text, expanded))
@@ -333,6 +347,7 @@ class CompanionBubble(QFrame):
         self._inline_final_output = False
         self.header.show()
         self.label.show()
+        self.output_hint_label.hide()
         self.hint_label.hide()
         self.main_layout.setContentsMargins(16, 12, 16, 12)
         self.cancel_countdown()
@@ -452,18 +467,22 @@ class CompanionBubble(QFrame):
             self.output.setPlainText(text)
 
     def _output_width(self, text: str, expanded: bool) -> int:
+        hint_min_width = self._output_hint_min_width()
         if not expanded:
             lines = [line.strip() for line in text.splitlines() if line.strip()]
             longest = max(lines, key=len, default=text)
             metrics = self.label.fontMetrics() if self._inline_final_output else self.output.fontMetrics()
             text_width = metrics.horizontalAdvance(longest)
             if self._inline_final_output:
-                return max(140, min(self._max_inline_output_width(), text_width + 16 + self._countdown_reserved_margin()))
-            return max(140, min(420, text_width + 56))
+                return max(hint_min_width, 140, min(self._max_inline_output_width(), text_width + 16 + self._countdown_reserved_margin()))
+            return max(hint_min_width, 140, min(420, text_width + 56))
         cursor = QCursor.pos()
         screen = QApplication.screenAt(cursor) or QApplication.primaryScreen()
         bounds = screen.availableGeometry() if screen else QApplication.primaryScreen().availableGeometry()
-        return max(420, min(720, bounds.width() - 96))
+        return max(hint_min_width, 420, min(720, bounds.width() - 96))
+
+    def _output_hint_min_width(self) -> int:
+        return self.output_hint_label.fontMetrics().horizontalAdvance(_output_shortcut_hint()) + 28
 
     def _fit_output_to_text(self, width: int) -> None:
         frame_padding = 18
@@ -581,6 +600,14 @@ class CompanionBubble(QFrame):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.setPen(QPen(QBrush(border), 1.2))
         painter.drawPath(bubble_path)
+
+
+def _output_shortcut_hint() -> str:
+    if sys.platform == "darwin":
+        return "esc hide · ⌘B keep/last"
+    if sys.platform.startswith("win"):
+        return "esc hide · AltGr+B keep/last"
+    return "esc hide"
 
 
 def _is_inline_final_output(text: str) -> bool:
