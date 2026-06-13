@@ -4,7 +4,7 @@ import time
 from enum import StrEnum
 
 from PySide6.QtCore import QPoint, QPointF, QRectF, QTimer, Qt
-from PySide6.QtGui import QColor, QBrush, QCursor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
+from PySide6.QtGui import QColor, QBrush, QCursor, QFont, QKeySequence, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient, QShortcut
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLineEdit, QLabel, QTextEdit, QVBoxLayout, QWidget
 
 from ospilot.desktop.window import allow_fullscreen_overlay, focus_widget, order_front
@@ -91,7 +91,7 @@ class CompanionBubble(QFrame):
             f"#statusLabel {{ color: rgba(175, 214, 255, 160); font-family: {FONT_STACK}; font-size: 12px; font-weight: 600; }}"
             f"QTextEdit {{ color: rgba(235, 246, 255, 232); background: transparent; border: none; font-family: {FONT_STACK}; font-size: 13px; padding: 0; margin: 0; }}"
             "QTextEdit::viewport { background: transparent; border: none; }"
-            f"QLineEdit {{ color: rgba(238, 249, 255, 238); background: rgba(11, 16, 27, 150); border: 1px solid rgba(150, 174, 203, 58); border-radius: 12px; padding: 9px 10px; font-family: {FONT_STACK}; font-size: 14px; selection-background-color: #3f6fa8; }}"
+            f"QLineEdit {{ color: rgba(238, 249, 255, 238); background: rgba(246, 251, 255, 24); border: 1px solid rgba(255, 255, 255, 54); border-radius: 12px; padding: 9px 10px; font-family: {FONT_STACK}; font-size: 14px; selection-background-color: #3f6fa8; }}"
         )
         self.state = CompanionState.HIDDEN
         self._accent_primary, self._accent_secondary = ACCENTS[CompanionState.OUTPUT]
@@ -152,6 +152,20 @@ class CompanionBubble(QFrame):
         self._fit_final_output = False
         self._inline_final_output = False
         self._mouse_passthrough = False
+        self._escape_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        self._escape_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        self._escape_shortcut.activated.connect(self._hide_from_escape)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() == Qt.Key.Key_Escape and self.isVisible():
+            self._hide_from_escape()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _hide_from_escape(self) -> None:
+        if self.isVisible():
+            self.reset()
 
     def show_chat(self, on_submit) -> None:
         self.cancel_countdown()
@@ -532,39 +546,41 @@ class CompanionBubble(QFrame):
 
         glow = QRadialGradient(rect.topLeft() + QPointF(44, 34), max(rect.width(), rect.height()) * 0.72)
         glow_primary = QColor(self._accent_primary)
-        glow_primary.setAlpha(24)
+        glow_primary.setAlpha(18)
         glow.setColorAt(0.0, glow_primary)
-        glow.setColorAt(0.62, QColor(29, 35, 49, 80))
+        glow.setColorAt(0.58, QColor(245, 250, 255, 22))
         glow.setColorAt(1.0, QColor(7, 10, 20, 0))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(glow)
         painter.drawRoundedRect(rect, 20, 20)
 
         base = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        base.setColorAt(0.0, QColor(18, 23, 33, 224))
-        base.setColorAt(0.52, QColor(22, 25, 35, 204))
-        base.setColorAt(1.0, QColor(10, 14, 22, 224))
+        base.setColorAt(0.0, QColor(210, 226, 242, 38))
+        base.setColorAt(0.34, QColor(128, 154, 184, 42))
+        base.setColorAt(0.68, QColor(23, 31, 47, 92))
+        base.setColorAt(1.0, QColor(7, 12, 23, 116))
         painter.setBrush(base)
         painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawPath(bubble_path)
+
+        haze = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        haze.setColorAt(0.0, QColor(255, 255, 255, 12))
+        haze.setColorAt(0.45, QColor(255, 255, 255, 10))
+        haze.setColorAt(1.0, QColor(255, 255, 255, 4))
+        painter.setBrush(haze)
         painter.drawPath(bubble_path)
 
         border = QLinearGradient(rect.topLeft(), rect.topRight())
         primary = QColor(self._accent_primary)
         secondary = QColor(self._accent_secondary)
-        primary.setAlpha(82)
-        secondary.setAlpha(58)
-        border.setColorAt(0.0, primary)
-        border.setColorAt(0.55, QColor(255, 255, 255, 36))
+        primary.setAlpha(96)
+        secondary.setAlpha(70)
+        border.setColorAt(0.0, QColor(255, 255, 255, 46))
+        border.setColorAt(0.42, primary)
         border.setColorAt(1.0, secondary)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(QBrush(border), 1.15))
+        painter.setPen(QPen(QBrush(border), 1.2))
         painter.drawPath(bubble_path)
-
-        shine_path = QPainterPath()
-        shine_path.addRoundedRect(rect.adjusted(1.0, 1.0, -1.0, -rect.height() * 0.56), 19, 19)
-        painter.setClipPath(shine_path)
-        painter.setPen(QPen(QColor(255, 255, 255, 24), 1))
-        painter.drawRoundedRect(rect.adjusted(1.5, 1.5, -1.5, -1.5), 19, 19)
 
 
 def _is_inline_final_output(text: str) -> bool:
