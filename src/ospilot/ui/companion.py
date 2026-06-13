@@ -4,8 +4,8 @@ import sys
 import time
 from enum import StrEnum
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, QTimer, Qt
-from PySide6.QtGui import QColor, QBrush, QCursor, QFont, QKeySequence, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient, QShortcut
+from PySide6.QtCore import QPoint, QRectF, QTimer, Qt
+from PySide6.QtGui import QColor, QCursor, QFont, QKeySequence, QPainter, QPen, QShortcut
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLineEdit, QLabel, QTextEdit, QVBoxLayout, QWidget
 
 from ospilot.desktop.window import allow_fullscreen_overlay, focus_widget, order_front
@@ -93,7 +93,7 @@ class CompanionBubble(QFrame):
             f"#statusLabel {{ color: rgba(175, 214, 255, 160); font-family: {FONT_STACK}; font-size: 12px; font-weight: 600; }}"
             f"QTextEdit {{ color: rgba(235, 246, 255, 232); background: transparent; border: none; font-family: {FONT_STACK}; font-size: 13px; padding: 0; margin: 0; }}"
             "QTextEdit::viewport { background: transparent; border: none; }"
-            f"QLineEdit {{ color: rgba(238, 249, 255, 238); background: rgba(246, 251, 255, 24); border: 1px solid rgba(255, 255, 255, 54); border-radius: 12px; padding: 9px 10px; font-family: {FONT_STACK}; font-size: 14px; selection-background-color: #3f6fa8; }}"
+            f"QLineEdit {{ color: rgba(238, 249, 255, 238); background: transparent; border: none; padding: 9px 10px; font-family: {FONT_STACK}; font-size: 14px; selection-background-color: #3f6fa8; }}"
         )
         self.state = CompanionState.HIDDEN
         self._accent_primary, self._accent_secondary = ACCENTS[CompanionState.OUTPUT]
@@ -556,50 +556,8 @@ class CompanionBubble(QFrame):
         self.update()
 
     def paintEvent(self, event) -> None:  # noqa: N802
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
-        bubble_path = QPainterPath()
-        bubble_path.addRoundedRect(rect, 20, 20)
-        painter.setClipPath(bubble_path)
-
-        glow = QRadialGradient(rect.topLeft() + QPointF(44, 34), max(rect.width(), rect.height()) * 0.72)
-        glow_primary = QColor(self._accent_primary)
-        glow_primary.setAlpha(18)
-        glow.setColorAt(0.0, glow_primary)
-        glow.setColorAt(0.58, QColor(245, 250, 255, 22))
-        glow.setColorAt(1.0, QColor(7, 10, 20, 0))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(glow)
-        painter.drawRoundedRect(rect, 20, 20)
-
-        base = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        base.setColorAt(0.0, QColor(210, 226, 242, 38))
-        base.setColorAt(0.34, QColor(128, 154, 184, 42))
-        base.setColorAt(0.68, QColor(23, 31, 47, 92))
-        base.setColorAt(1.0, QColor(7, 12, 23, 116))
-        painter.setBrush(base)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawPath(bubble_path)
-
-        haze = QLinearGradient(rect.topLeft(), rect.bottomLeft())
-        haze.setColorAt(0.0, QColor(255, 255, 255, 12))
-        haze.setColorAt(0.45, QColor(255, 255, 255, 10))
-        haze.setColorAt(1.0, QColor(255, 255, 255, 4))
-        painter.setBrush(haze)
-        painter.drawPath(bubble_path)
-
-        border = QLinearGradient(rect.topLeft(), rect.topRight())
-        primary = QColor(self._accent_primary)
-        secondary = QColor(self._accent_secondary)
-        primary.setAlpha(96)
-        secondary.setAlpha(70)
-        border.setColorAt(0.0, QColor(255, 255, 255, 46))
-        border.setColorAt(0.42, primary)
-        border.setColorAt(1.0, secondary)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(QBrush(border), 1.2))
-        painter.drawPath(bubble_path)
+        # Keep the companion window fully transparent; child widgets render the text.
+        return
 
 
 def _output_shortcut_hint() -> str:
