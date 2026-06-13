@@ -11,16 +11,18 @@ HOTKEYS = {
     "<alt_gr>+.": "open_chat",
     "<alt_gr>+,": "open_voice",
     "<alt_gr>+<": "stop",
+    "<alt_gr>+b": "show_last_answer",
     "<ctrl>+<alt>+.": "open_chat",
     "<ctrl>+<alt>+,": "open_voice",
     "<ctrl>+<alt>+<": "stop",
+    "<ctrl>+<alt>+b": "show_last_answer",
 }
 
 
 class GlobalShortcuts(QObject):
     triggered = Signal(str)
 
-    def __init__(self, parent, open_chat, open_voice, stop) -> None:
+    def __init__(self, parent, open_chat, open_voice, stop, show_last_answer) -> None:
         super().__init__(parent)
         self.shortcuts: list[QShortcut] = []
         self.listener = None
@@ -29,20 +31,23 @@ class GlobalShortcuts(QObject):
             "open_chat": open_chat,
             "open_voice": open_voice,
             "stop": stop,
+            "show_last_answer": show_last_answer,
         }
         self.triggered.connect(lambda name: callbacks[name]())
-        if self._start_global_hotkeys(open_chat, open_voice, stop):
+        if self._start_global_hotkeys():
             self.backend = "pynput"
         else:
             self.backend = "qt"
             self._add("AltGr+.", open_chat, parent)
             self._add("AltGr+,", open_voice, parent)
             self._add("AltGr+<", stop, parent)
+            self._add("AltGr+B", show_last_answer, parent)
             self._add("Ctrl+Alt+.", open_chat, parent)
             self._add("Ctrl+Alt+,", open_voice, parent)
             self._add("Ctrl+Alt+<", stop, parent)
+            self._add("Ctrl+Alt+B", show_last_answer, parent)
 
-    def _start_global_hotkeys(self, open_chat, open_voice, stop) -> bool:
+    def _start_global_hotkeys(self) -> bool:
         try:
             from pynput import keyboard
         except Exception:

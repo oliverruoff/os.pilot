@@ -61,3 +61,5 @@ def test_windows_shortcuts_register_altgr_hotkeys() -> None:
 
     assert HOTKEYS["<alt_gr>+."] == "open_chat"
     assert HOTKEYS["<ctrl>+<alt>+."] == "open_chat"
+    assert HOTKEYS["<alt_gr>+b"] == "show_last_answer"
+    assert HOTKEYS["<ctrl>+<alt>+b"] == "show_last_answer"

@@ -28,8 +28,8 @@ class MacOSDesktopBackend:
     def configure_background_app(self) -> None:
         configure_background_app()
 
-    def create_global_shortcuts(self, parent: Any, open_chat: Any, open_voice: Any, stop: Any) -> GlobalShortcuts:
-        return GlobalShortcuts(parent, open_chat, open_voice, stop)
+    def create_global_shortcuts(self, parent: Any, open_chat: Any, open_voice: Any, stop: Any, show_last_answer: Any) -> GlobalShortcuts:
+        return GlobalShortcuts(parent, open_chat, open_voice, stop, show_last_answer)
 
     def get_active_context(self) -> dict[str, Any]:
         return get_active_context()

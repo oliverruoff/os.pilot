@@ -47,6 +47,7 @@ class OSPilotApp:
         self._stream_buffer = ""
         self._thinking_buffer = ""
         self._last_output = ""
+        self._last_final_output = ""
         self._message_role = ""
         self._active_prompt = False
         self._desktop_input_app_pid: int | None = None
@@ -72,7 +73,7 @@ class OSPilotApp:
             self.stop,
             self.quit,
         )
-        self.shortcuts = self.desktop.create_global_shortcuts(self.companion, self.open_chat, self.open_voice, self.stop)
+        self.shortcuts = self.desktop.create_global_shortcuts(self.companion, self.open_chat, self.open_voice, self.stop, self.show_last_answer)
         self.logger.info("shortcut backend=%s", self.shortcuts.backend)
 
     def run(self) -> int:
@@ -147,6 +148,13 @@ class OSPilotApp:
             "switch session",
         )
 
+    def show_last_answer(self) -> None:
+        self.logger.info("show_last_answer")
+        text = self._last_final_output or final_answer_text(self._last_output)
+        if not text:
+            return
+        self.companion.show_output(text, expanded=False, fit_to_content=True)
+
     def stop(self) -> None:
         self.logger.info("stop")
         self._active_prompt = False
@@ -211,9 +219,11 @@ class OSPilotApp:
             self._watchdog.stop()
             self.halo.hide_halo()
             if self._last_output:
-                self.companion.show_final_output(final_answer_text(self._last_output))
+                final_text = final_answer_text(self._last_output)
             else:
-                self.companion.show_final_output(final_answer_text(text) or "Done.")
+                final_text = final_answer_text(text) or "Done."
+            self._last_final_output = final_text
+            self.companion.show_final_output(final_text)
         elif event_type in {"extension_error"}:
             self._active_prompt = False
             self._watchdog.stop()
