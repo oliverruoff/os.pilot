@@ -98,9 +98,40 @@ def order_front(widget: Any, make_key: bool = False) -> None:
     if ns_window is None:
         return
     try:
-        if make_key and hasattr(ns_window, "makeKeyAndOrderFront_"):
-            ns_window.makeKeyAndOrderFront_(None)
+        if make_key:
+            # For full-screen Spaces, first join/order into the active Space,
+            # then ask AppKit to make this window key. This avoids Qt's generic
+            # activation path, which can jump back to OSPilot's launch Desktop.
+            ns_window.orderFrontRegardless()
+            if hasattr(ns_window, "makeKeyAndOrderFront_"):
+                ns_window.makeKeyAndOrderFront_(None)
+            elif hasattr(ns_window, "makeKeyWindow"):
+                ns_window.makeKeyWindow()
         else:
             ns_window.orderFrontRegardless()
+    except Exception:
+        return
+
+
+def focus_widget(widget: Any, top_level: Any | None = None) -> None:
+    """Make a Qt child widget first responder without Qt app activation."""
+    if sys.platform != "darwin":
+        return
+    try:
+        import objc  # type: ignore[import-not-found]
+    except Exception:
+        return
+    try:
+        int((top_level or widget).winId())
+        handle = int(widget.winId())
+        native = objc.objc_object(c_void_p=handle)
+        ns_view = native.contentView() if hasattr(native, "contentView") else native
+        ns_window = (
+            ns_view.window()
+            if hasattr(ns_view, "window")
+            else _ns_window_for_widget(top_level or widget)
+        )
+        if ns_window is not None and hasattr(ns_window, "makeFirstResponder_"):
+            ns_window.makeFirstResponder_(ns_view)
     except Exception:
         return

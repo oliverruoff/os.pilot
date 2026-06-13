@@ -209,6 +209,8 @@ class CompanionBubble(QFrame):
         self.output_hint_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.output_hint_label.hide()
         self.input = QLineEdit()
+        self._submit_callback = None
+        self.input.returnPressed.connect(self._submit_input)
         self.input.setFont(_tech_font(14))
         self.input.setPlaceholderText("> ask pi...")
         self.hint_label = QLabel("Enter to send | /new for new session")
@@ -241,6 +243,10 @@ class CompanionBubble(QFrame):
         self._escape_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
         self._escape_shortcut.activated.connect(self._hide_from_escape)
 
+    def _submit_input(self) -> None:
+        if self._submit_callback is not None:
+            self._submit_callback(self.input.text())
+
     def keyPressEvent(self, event) -> None:  # noqa: N802
         if event.key() == Qt.Key.Key_Escape and self.isVisible():
             self._hide_from_escape()
@@ -258,19 +264,18 @@ class CompanionBubble(QFrame):
         self._set_mouse_passthrough(False)
         if self.isVisible() and self.state != CompanionState.CHAT_INPUT:
             # Re-show the bubble when switching from passive output/status mode
-            # to input mode. On macOS a window previously shown as
-            # non-activating may not reliably become key until it is ordered in
-            # again with the non-activating style removed.
+            # to input mode so platform window flags/collection behavior are
+            # applied before it is ordered in again.
             self.hide()
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
-        allow_fullscreen_overlay(self, nonactivating=False)
+        # On macOS, activating OSPilot from a full-screen Space can make the OS
+        # switch back to OSPilot's original Desktop. Keep the input bubble as a
+        # non-activating full-screen auxiliary window and make it key directly.
+        show_without_activating = sys.platform == "darwin"
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, show_without_activating)
+        allow_fullscreen_overlay(self, nonactivating=show_without_activating)
         self.state = CompanionState.CHAT_INPUT
         self._set_visual_state(self.state)
-        try:
-            self.input.returnPressed.disconnect()
-        except (RuntimeError, TypeError):
-            pass
-        self.input.returnPressed.connect(lambda: on_submit(self.input.text()))
+        self._submit_callback = on_submit
         self.main_layout.setContentsMargins(16, 12, 16, 12)
         self.header.hide()
         self.status_label.setText("")
@@ -469,6 +474,7 @@ class CompanionBubble(QFrame):
         self.setMinimumHeight(72)
         self._set_mouse_passthrough(False)
         self.state = CompanionState.HIDDEN
+        self._submit_callback = None
         self.input.clear()
         self.output.clear()
         self.label.setMaximumHeight(16777215)
@@ -512,7 +518,11 @@ class CompanionBubble(QFrame):
             self.reset()
 
     def _show_near_cursor(self, width: int = 380, accept_keyboard: bool = False) -> None:
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, not accept_keyboard)
+        macos_nonactivating_input = sys.platform == "darwin" and accept_keyboard
+        self.setAttribute(
+            Qt.WidgetAttribute.WA_ShowWithoutActivating,
+            (not accept_keyboard) or macos_nonactivating_input,
+        )
         self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, not accept_keyboard)
         self.setFixedWidth(width)
         if self.output_frame.isVisible():
@@ -522,11 +532,12 @@ class CompanionBubble(QFrame):
             self.resize(width, self.sizeHint().height())
         self._position_countdown_ring()
         target = self._position_near_cursor()
-        allow_fullscreen_overlay(self, nonactivating=not accept_keyboard)
+        nonactivating = (not accept_keyboard) or macos_nonactivating_input
+        allow_fullscreen_overlay(self, nonactivating=nonactivating)
         if not self.isVisible():
             self.move(target)
             self.show()
-            allow_fullscreen_overlay(self, nonactivating=not accept_keyboard)
+            allow_fullscreen_overlay(self, nonactivating=nonactivating)
         if not self._follow_timer.isActive():
             self._follow_timer.start(16)
         if accept_keyboard:
@@ -562,10 +573,11 @@ class CompanionBubble(QFrame):
         if self.state != CompanionState.CHAT_INPUT or not self.input.isVisible():
             return
         order_front(self, make_key=True)
-        QApplication.setActiveWindow(self)
         self.raise_()
-        self.activateWindow()
-        self.input.activateWindow()
+        if sys.platform != "darwin":
+            QApplication.setActiveWindow(self)
+            self.activateWindow()
+            self.input.activateWindow()
         self.input.setFocus(Qt.FocusReason.ShortcutFocusReason)
         focus_widget(self.input, self)
 

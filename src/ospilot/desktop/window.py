@@ -25,7 +25,9 @@ def order_front(widget: Any, make_key: bool = False) -> None:
 
 
 def focus_widget(widget: Any, top_level: Any | None = None) -> None:
-    if sys.platform == "win32":
+    if sys.platform == "darwin":
+        from ospilot.desktop.macos.window import focus_widget as platform_focus_widget
+    elif sys.platform == "win32":
         from ospilot.desktop.windows.window import focus_widget as platform_focus_widget
     else:
         return
