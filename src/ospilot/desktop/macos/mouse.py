@@ -11,6 +11,10 @@ from .screenshot import get_last_screenshot_context
 
 
 StopPredicate = Callable[[], bool]
+MOUSE_SPEED_SCALE = 3.0  # 1/3 speed: triple the movement duration.
+MIN_MOVE_DURATION_MS = 60
+MAX_MOVE_DURATION_MS = 700
+MAX_SLOWED_MOVE_DURATION_MS = int(MAX_MOVE_DURATION_MS * MOUSE_SPEED_SCALE)
 
 
 class MouseController:
@@ -41,9 +45,10 @@ class MouseController:
             distance = math.dist((start_pos.x, start_pos.y), (end_x, end_y))
             requested_ms = duration_ms if isinstance(duration_ms, int | float) else None
             auto_ms = min(350, max(80, 45 + distance * 0.24))
-            duration_ms_final = min(700, max(60, requested_ms if requested_ms is not None else auto_ms))
+            base_duration_ms = requested_ms if requested_ms is not None else auto_ms
+            duration_ms_final = min(MAX_SLOWED_MOVE_DURATION_MS, max(MIN_MOVE_DURATION_MS, base_duration_ms) * MOUSE_SPEED_SCALE)
             duration = duration_ms_final / 1000
-            steps = max(10, min(90, int(duration * 120)))
+            steps = max(10, min(240, int(duration * 120)))
             path = human_mouse_path((start_pos.x, start_pos.y), (end_x, end_y), steps)
             self.reset()
             last = time.perf_counter()
