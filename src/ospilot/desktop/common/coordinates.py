@@ -24,13 +24,17 @@ def normalize_target(target: dict[str, Any], bounds: Bounds, screenshot_context:
     coordinate_space = str(target.get("coordinate_space", "")).strip()
     if coordinate_space == "display_point":
         return x_float, y_float
+    if coordinate_space in {"normalized", "relative"}:
+        relative_bounds = screenshot_monitor_bounds(screenshot_context) or bounds
+        return relative_bounds.x + relative_bounds.width * x_float, relative_bounds.y + relative_bounds.height * y_float
     if coordinate_space == "screenshot_pixel":
         converted = screenshot_pixel_to_display_point(x_float, y_float, screenshot_context)
         if converted is None:
             raise ValueError("screenshot_pixel target requires a recent screenshot context")
         return converted
     if 0 <= x_float <= 1 and 0 <= y_float <= 1:
-        return bounds.x + bounds.width * x_float, bounds.y + bounds.height * y_float
+        relative_bounds = screenshot_monitor_bounds(screenshot_context) or bounds
+        return relative_bounds.x + relative_bounds.width * x_float, relative_bounds.y + relative_bounds.height * y_float
 
     # If the model points at pixel coordinates from the last screenshot, convert
     # them back into logical display coordinates. This matters on Retina/high-DPI
@@ -39,6 +43,24 @@ def normalize_target(target: dict[str, Any], bounds: Bounds, screenshot_context:
     if converted is not None:
         return converted
     return x_float, y_float
+
+
+def screenshot_monitor_bounds(screenshot_context: dict[str, Any] | None) -> Bounds | None:
+    if not screenshot_context:
+        return None
+    monitor_bounds = screenshot_context.get("monitor_bounds")
+    if not isinstance(monitor_bounds, dict):
+        return None
+    monitor_x = monitor_bounds.get("x")
+    monitor_y = monitor_bounds.get("y")
+    monitor_width = monitor_bounds.get("width")
+    monitor_height = monitor_bounds.get("height")
+    values = (monitor_x, monitor_y, monitor_width, monitor_height)
+    if not all(isinstance(value, int | float) for value in values):
+        return None
+    if float(monitor_width) <= 0 or float(monitor_height) <= 0:
+        return None
+    return Bounds(float(monitor_x), float(monitor_y), float(monitor_width), float(monitor_height))
 
 
 def screenshot_pixel_to_display_point(x: float, y: float, screenshot_context: dict[str, Any] | None) -> tuple[float, float] | None:

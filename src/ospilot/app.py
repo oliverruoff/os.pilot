@@ -62,6 +62,7 @@ class OSPilotApp:
         self._companion_visibility_timer = QTimer()
         self._companion_visibility_timer.timeout.connect(self._ensure_active_companion_visible)
         self._overlay_temporarily_hidden = False
+        self._screen_capture_active = False
 
         self.companion = CompanionBubble()
         self.ui_dispatch.companion_message.connect(self.companion.show_output)
@@ -243,10 +244,13 @@ class OSPilotApp:
             self._stream_buffer = text
             self._last_output = self._stream_buffer
         elif event_type == "tool_execution_start":
+            self._screen_capture_active = tool_name == "ospilot_capture_screenshot_current_mouse_monitor"
             self._show_passive_companion("show_status", _tool_status_text(text, tool_name), CompanionState.TOOL_RUNNING, tool_name)
         elif event_type == "tool_execution_update":
             self._show_passive_companion("show_status", _tool_status_text(text, tool_name), CompanionState.TOOL_RUNNING, tool_name)
         elif event_type == "tool_execution_end":
+            if tool_name == "ospilot_capture_screenshot_current_mouse_monitor":
+                self._screen_capture_active = False
             if self._last_output:
                 self._show_passive_companion("show_stream", self._thinking_buffer or self._stream_buffer)
             else:
@@ -297,10 +301,12 @@ class OSPilotApp:
             self._overlay_temporarily_hidden = not visible
             if visible:
                 if self._active_prompt:
-                    text = self._thinking_buffer or self._stream_buffer or "Looking at your screen..."
+                    text = "Looking at your screen..." if self._screen_capture_active else self._thinking_buffer or self._stream_buffer or "Thinking..."
                     self._show_passive_companion("show_stream", text)
             else:
-                self.halo.show_halo("control", "Looking at your screen…")
+                if self._active_prompt:
+                    self.companion.show_stream("Looking at your screen...")
+                self.halo.hide_halo()
                 self.companion.hide()
         finally:
             done.set()
@@ -452,6 +458,8 @@ def _merge_stream_text(current: str, incoming: str) -> str:
 
 
 def _tool_status_text(text: str, tool_name: str = "", finished: bool = False) -> str:
+    if tool_name == "ospilot_capture_screenshot_current_mouse_monitor":
+        return "Looked at your screen." if finished else "Looking at your screen..."
     stripped = text.strip()
     if stripped and stripped not in {"{}", "[]", "null", "None"}:
         return stripped

@@ -50,8 +50,9 @@ def test_prompt_includes_visual_pointing_tool_hint(tmp_path) -> None:
 
     method, params = rpc.calls[0]
     assert method == "prompt"
-    assert "first call ospilot_get_frontmost_ui_elements" in params["prompt"]
-    assert "Only call ospilot_capture_screenshot_current_mouse_monitor" in params["prompt"]
+    assert "use at most one perception tool" in params["prompt"]
+    assert "ospilot_get_frontmost_ui_elements" in params["prompt"]
+    assert "ospilot_capture_screenshot_current_mouse_monitor returns an HD/720p JPEG" in params["prompt"]
     assert "mouse_position" in params["prompt"]
     assert "User request: where is the search button?" in params["prompt"]
 

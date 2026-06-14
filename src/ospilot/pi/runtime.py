@@ -18,9 +18,10 @@ class PiSession:
 
 
 OSPILOT_FAST_TOOL_HINT = """OSPilot visual-grounding hint:
-- When the user asks where a named UI control/setting/button is, or asks to click one, first call ospilot_get_frontmost_ui_elements with a short query. Use the returned exact center coordinates for ospilot_move_mouse or ospilot_click with coordinate_space="display_point"; this is faster and more precise than visual guessing.
-- Only call ospilot_capture_screenshot_current_mouse_monitor when Accessibility cannot identify the target or the target is purely visual. Inspect screenshot metadata, especially mouse_position, monitor_bounds, screenshot_size, and scale_factor.
-- After locating the requested item, choose the exact center of the relevant UI element/icon/label and call ospilot_move_mouse. For screenshot-based targets, prefer normalized coordinates relative to the screenshot/monitor; if using exact screenshot pixel coordinates from the latest screenshot, set coordinate_space="screenshot_pixel".
+- Be fast for point/show requests: use at most one perception tool, then immediately call ospilot_move_mouse. Do not narrate while locating.
+- For named UI elements (controls, buttons, tabs, fields, menu items, icons with labels), always call ospilot_get_frontmost_ui_elements first with a short query and use the returned element center with coordinate_space="display_point". Target the control's bounds center, not the nearby label text, unless the user explicitly asks for the label itself. Only skip UI lookup for purely visual/spatial targets.
+- ospilot_capture_screenshot_current_mouse_monitor returns an HD/720p JPEG for speed; inspect mouse_position, monitor_bounds, screenshot_size (the scaled image sent to you), original_screenshot_size, and scale_factor.
+- After locating the target, choose the exact center and call ospilot_move_mouse. For screenshot-based targets, prefer relative coordinates in the latest screenshot (x/y from 0.0 to 1.0, coordinate_space="relative"); OSPilot maps them back to the actual monitor resolution. If using exact pixel coordinates from the latest scaled screenshot, set coordinate_space="screenshot_pixel".
 - Do not click for \"where is ...\" / \"show me ...\" requests unless the user explicitly asks to click or open it.
 """
 

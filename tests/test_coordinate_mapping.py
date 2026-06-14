@@ -1,4 +1,5 @@
 from ospilot.desktop.common.coordinates import Bounds, clamp_point, ease_in_out_cubic, human_mouse_path, normalize_target, screenshot_pixel_to_display_point
+from ospilot.desktop.common.screenshots import hd_screenshot_size
 
 
 def test_normalized_target_maps_to_monitor_bounds() -> None:
@@ -12,11 +13,27 @@ def test_absolute_target_passes_through() -> None:
 def test_screenshot_pixel_target_maps_to_display_points() -> None:
     context = {
         "monitor_bounds": {"x": 100, "y": 50, "width": 1000, "height": 500},
-        "screenshot_size": {"width": 2000, "height": 1000},
+        "screenshot_size": {"width": 1000, "height": 500},
+        "original_screenshot_size": {"width": 2000, "height": 1000},
     }
 
-    assert screenshot_pixel_to_display_point(1000, 500, context) == (600, 300)
-    assert normalize_target({"x": 1000, "y": 500}, Bounds(100, 50, 1000, 500), context) == (600, 300)
+    assert screenshot_pixel_to_display_point(500, 250, context) == (600, 300)
+    assert normalize_target({"x": 500, "y": 250}, Bounds(100, 50, 1000, 500), context) == (600, 300)
+
+
+def test_relative_target_uses_screenshot_monitor_bounds() -> None:
+    context = {
+        "monitor_bounds": {"x": 100, "y": 50, "width": 1000, "height": 500},
+        "screenshot_size": {"width": 1000, "height": 500},
+    }
+
+    assert normalize_target({"x": 0.5, "y": 0.5, "coordinate_space": "relative"}, Bounds(0, 0, 1, 1), context) == (600, 300)
+
+
+def test_hd_screenshot_size_fits_common_resolutions() -> None:
+    assert hd_screenshot_size(3840, 2160) == (1280, 720)
+    assert hd_screenshot_size(2560, 1600) == (1152, 720)
+    assert hd_screenshot_size(1920, 1080) == (1280, 720)
 
 
 def test_clamp_point_limits_to_bounds() -> None:

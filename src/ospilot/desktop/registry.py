@@ -57,9 +57,8 @@ def build_default_registry(
 def _without_overlay(screenshot_visibility: Callable[[bool], None] | None, action: Callable[[], dict[str, Any]], restore: bool = True) -> dict[str, Any]:
     if screenshot_visibility:
         screenshot_visibility(False)
-        # Give the OS one frame to remove OSPilot's overlay before the desktop action,
-        # so screenshots and clicks do not hit/respond to OSPilot's own bubble.
-        time.sleep(0.15)
+        # Give the OS a short frame to remove OSPilot's overlay before capture.
+        time.sleep(0.05)
     try:
         return action()
     finally:
@@ -80,7 +79,7 @@ def _desktop_input(
     # _without_overlay() and hide it explicitly.
     if before_desktop_input:
         before_desktop_input()
-        time.sleep(0.15)
+        time.sleep(0.05)
     try:
         return action()
     finally:

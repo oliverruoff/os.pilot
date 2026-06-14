@@ -11,9 +11,9 @@ from .screenshot import get_last_screenshot_context
 
 
 StopPredicate = Callable[[], bool]
-MOUSE_SPEED_SCALE = 3.0  # 1/3 speed: triple the movement duration.
-MIN_MOVE_DURATION_MS = 60
-MAX_MOVE_DURATION_MS = 700
+MOUSE_SPEED_SCALE = 1.65  # ~1/3 of the previous fast pointer speed.
+MIN_MOVE_DURATION_MS = 35
+MAX_MOVE_DURATION_MS = 370
 MAX_SLOWED_MOVE_DURATION_MS = int(MAX_MOVE_DURATION_MS * MOUSE_SPEED_SCALE)
 
 
@@ -44,11 +44,11 @@ class MouseController:
             end_x, end_y = clamp_point(end_x, end_y, target_bounds)
             distance = math.dist((start_pos.x, start_pos.y), (end_x, end_y))
             requested_ms = duration_ms if isinstance(duration_ms, int | float) else None
-            auto_ms = min(350, max(80, 45 + distance * 0.24))
+            auto_ms = min(MAX_MOVE_DURATION_MS, max(55, 30 + distance * 0.12))
             base_duration_ms = requested_ms if requested_ms is not None else auto_ms
-            duration_ms_final = min(MAX_SLOWED_MOVE_DURATION_MS, max(MIN_MOVE_DURATION_MS, base_duration_ms) * MOUSE_SPEED_SCALE)
+            duration_ms_final = min(MAX_MOVE_DURATION_MS, max(MIN_MOVE_DURATION_MS, base_duration_ms) * MOUSE_SPEED_SCALE)
             duration = duration_ms_final / 1000
-            steps = max(10, min(240, int(duration * 120)))
+            steps = max(6, min(48, int(duration * 90)))
             path = human_mouse_path((start_pos.x, start_pos.y), (end_x, end_y), steps)
             self.reset()
             last = time.perf_counter()
@@ -131,7 +131,7 @@ def _display_for_point(Quartz, x: float, y: float):
 
 def _bounds_for_target(Quartz, x: float, y: float, target: dict[str, Any], fallback: Bounds, screenshot_context: dict[str, Any] | None) -> Bounds:
     coordinate_space = str(target.get("coordinate_space", "")).strip()
-    if coordinate_space == "screenshot_pixel":
+    if coordinate_space in {"screenshot_pixel", "relative", "normalized"}:
         screenshot_bounds = _bounds_from_screenshot_context(screenshot_context)
         if screenshot_bounds is not None:
             return screenshot_bounds

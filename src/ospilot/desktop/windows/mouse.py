@@ -5,14 +5,14 @@ import threading
 import time
 from typing import Any
 
-from ospilot.desktop.common.coordinates import Bounds, clamp_point, human_mouse_path, normalize_target
+from ospilot.desktop.common.coordinates import Bounds, clamp_point, human_mouse_path, normalize_target, screenshot_monitor_bounds
 
 from .screenshot import get_last_screenshot_context
 
 
-MOUSE_SPEED_SCALE = 3.0  # 1/3 speed: triple the movement duration.
-MIN_MOVE_DURATION_MS = 60
-MAX_MOVE_DURATION_MS = 700
+MOUSE_SPEED_SCALE = 1.65  # ~1/3 of the previous fast pointer speed.
+MIN_MOVE_DURATION_MS = 35
+MAX_MOVE_DURATION_MS = 370
 MAX_SLOWED_MOVE_DURATION_MS = int(MAX_MOVE_DURATION_MS * MOUSE_SPEED_SCALE)
 
 
@@ -39,15 +39,17 @@ class MouseController:
                 mouse = Controller()
                 start_x, start_y = _cursor_position()
                 bounds = _monitor_bounds_for_point(start_x, start_y)
-                end_x, end_y = normalize_target(target, bounds, get_last_screenshot_context())
-                end_x, end_y = clamp_point(end_x, end_y, bounds)
+                screenshot_context = get_last_screenshot_context()
+                end_x, end_y = normalize_target(target, bounds, screenshot_context)
+                target_bounds = _target_bounds_for_point(end_x, end_y, target, bounds, screenshot_context)
+                end_x, end_y = clamp_point(end_x, end_y, target_bounds)
                 distance = math.dist((start_x, start_y), (end_x, end_y))
                 requested_ms = duration_ms if isinstance(duration_ms, int | float) else None
-                auto_ms = min(350, max(80, 45 + distance * 0.24))
+                auto_ms = min(MAX_MOVE_DURATION_MS, max(55, 30 + distance * 0.12))
                 base_duration_ms = requested_ms if requested_ms is not None else auto_ms
-                duration_ms_final = min(MAX_SLOWED_MOVE_DURATION_MS, max(MIN_MOVE_DURATION_MS, base_duration_ms) * MOUSE_SPEED_SCALE)
+                duration_ms_final = min(MAX_MOVE_DURATION_MS, max(MIN_MOVE_DURATION_MS, base_duration_ms) * MOUSE_SPEED_SCALE)
                 duration = duration_ms_final / 1000
-                steps = max(10, min(240, int(duration * 120)))
+                steps = max(6, min(48, int(duration * 90)))
                 path = human_mouse_path((start_x, start_y), (end_x, end_y), steps)
                 self.reset()
                 last = time.perf_counter()
@@ -97,7 +99,16 @@ def _click_tool(button: str, double: bool) -> str:
     return "ospilot_double_click" if double else "ospilot_click"
 
 
-def _monitor_bounds_for_point(x: float, y: float) -> Bounds:
+def _target_bounds_for_point(x: float, y: float, target: dict[str, Any], fallback: Bounds, screenshot_context: dict[str, Any] | None) -> Bounds:
+    coordinate_space = str(target.get("coordinate_space", "")).strip()
+    if coordinate_space in {"screenshot_pixel", "relative", "normalized"}:
+        screenshot_bounds = screenshot_monitor_bounds(screenshot_context)
+        if screenshot_bounds is not None:
+            return screenshot_bounds
+    return _monitor_bounds_for_point(x, y, fallback)
+
+
+def _monitor_bounds_for_point(x: float, y: float, fallback: Bounds | None = None) -> Bounds:
     try:
         import mss
 
@@ -115,7 +126,7 @@ def _monitor_bounds_for_point(x: float, y: float) -> Bounds:
                 return Bounds(float(monitor["left"]), float(monitor["top"]), float(monitor["width"]), float(monitor["height"]))
     except Exception:
         pass
-    return Bounds(0, 0, 1920, 1080)
+    return fallback or Bounds(0, 0, 1920, 1080)
 
 
 def _cursor_position() -> tuple[int, int]:

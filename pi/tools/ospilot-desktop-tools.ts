@@ -41,7 +41,7 @@ const commonProperties = {
     properties: {
       x: { type: "number" as const, description: "X coordinate. Use 0-1 normalized relative to the monitor, an Accessibility display point, or a pixel coordinate from the latest screenshot." },
       y: { type: "number" as const, description: "Y coordinate. Use 0-1 normalized relative to the monitor, an Accessibility display point, or a pixel coordinate from the latest screenshot." },
-      coordinate_space: { type: "string" as const, enum: ["normalized", "display_point", "screenshot_pixel"] as const, description: "Optional coordinate type. Use display_point for Accessibility centers; use screenshot_pixel for pixel coordinates from the latest screenshot; omit for normalized 0-1 coordinates." },
+      coordinate_space: { type: "string" as const, enum: ["normalized", "relative", "display_point", "screenshot_pixel"] as const, description: "Optional coordinate type. Use relative/normalized for 0-1 coordinates in the latest screenshot/monitor; use display_point for Accessibility centers; use screenshot_pixel for pixel coordinates from the latest scaled screenshot." },
     },
     required: ["x", "y"] as const,
   },
@@ -55,7 +55,7 @@ const tools = [
   },
   {
     name: "ospilot_get_frontmost_ui_elements",
-    description: "Fast precise UI element lookup for the frontmost macOS or Windows app using Accessibility/UI Automation. Use this before screenshots when the user asks where a named UI control/setting/button is, or before clicking a named control. Pass a short query like \"battery\", \"settings\", \"search\". Returns element labels, roles, bounds, and exact center coordinates in screen points for ospilot_move_mouse or ospilot_click.",
+    description: "Fast precise UI element lookup for the frontmost macOS or Windows app using Accessibility/UI Automation. Always use this before screenshots when the user asks where a named UI element/control/setting/button/tab/field/menu item is, or before clicking one. Pass a short query like \"battery\", \"settings\", \"search\". Returns element labels, roles, bounds, and exact center coordinates in screen points for ospilot_move_mouse or ospilot_click. Use the control bounds center, not adjacent label text, unless the label itself was requested.",
     parameters: {
       type: "object" as const,
       properties: {
@@ -82,7 +82,7 @@ const tools = [
   },
   {
     name: "ospilot_move_mouse",
-    description: "Visual pointer tool. Move the mouse to target coordinates to point out or highlight something on screen. For named UI controls, first use ospilot_get_frontmost_ui_elements and pass the returned exact center coordinates. For visual-only targets, use a screenshot and choose the exact center of the requested item. Do not click unless the user explicitly asks to click.",
+    description: "Visual pointer tool. Move the mouse to target coordinates to point out or highlight something on screen. For named UI elements/controls, first use ospilot_get_frontmost_ui_elements and pass the returned exact control center coordinates. For visual-only targets, use a screenshot and choose the exact center of the requested item. Prefer coordinate_space='relative' with 0-1 coordinates from the latest screenshot. Do not click unless the user explicitly asks to click.",
     parameters: {
       type: "object" as const,
       properties: {

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ospilot.core.config import AppConfig
+from ospilot.desktop.common.screenshots import hd_screenshot_size
 
 
 _LAST_SCREENSHOT_CONTEXT: dict[str, Any] | None = None
@@ -33,19 +34,33 @@ def capture_screenshot_current_mouse_monitor(config: AppConfig) -> dict[str, Any
             target_dir = config.paths.screenshots if config.privacy.store_screenshots else Path(tempfile.gettempdir())
             target_dir.mkdir(parents=True, exist_ok=True)
             path = target_dir / f"ospilot-screenshot-{int(time.time() * 1000)}.jpg"
+            started = time.perf_counter()
             raw = sct.grab(monitor)
+            captured_at = time.perf_counter()
             image = Image.frombytes("RGB", raw.size, raw.rgb)
-            image.save(path, format="JPEG", quality=65, optimize=True)
+            scaled_width, scaled_height = hd_screenshot_size(raw.width, raw.height)
+            if image.size != (scaled_width, scaled_height):
+                resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+                image = image.resize((scaled_width, scaled_height), resampling)
+            image.save(path, format="JPEG", quality=45, optimize=False, subsampling=2)
+            encoded_at = time.perf_counter()
 
             result: dict[str, Any] = {
                 "ok": True,
                 "tool": tool,
                 "mouse_position": {"x": cursor_x, "y": cursor_y},
                 "monitor_bounds": {"x": int(monitor["left"]), "y": int(monitor["top"]), "width": int(monitor["width"]), "height": int(monitor["height"])},
-                "screenshot_size": {"width": int(raw.width), "height": int(raw.height)},
+                "screenshot_size": {"width": int(scaled_width), "height": int(scaled_height)},
+                "original_screenshot_size": {"width": int(raw.width), "height": int(raw.height)},
                 "screenshot_path": str(path),
                 "screenshot_mime_type": "image/jpeg",
-                "scale_factor": float(raw.width / monitor["width"]) if monitor["width"] else 1.0,
+                "scale_factor": float(scaled_width / monitor["width"]) if monitor["width"] else 1.0,
+                "original_scale_factor": float(raw.width / monitor["width"]) if monitor["width"] else 1.0,
+                "metadata": {
+                    "capture_ms": round((captured_at - started) * 1000),
+                    "resize_encode_ms": round((encoded_at - captured_at) * 1000),
+                    "bytes": path.stat().st_size if path.exists() else 0,
+                },
             }
             global _LAST_SCREENSHOT_CONTEXT
             _LAST_SCREENSHOT_CONTEXT = result
