@@ -5,7 +5,7 @@ import time
 from enum import StrEnum
 
 from PySide6.QtCore import QPoint, QRect, QRectF, QSize, QTimer, Qt
-from PySide6.QtGui import QColor, QCursor, QFont, QKeySequence, QPainter, QPen, QShortcut
+from PySide6.QtGui import QColor, QCursor, QFont, QKeySequence, QPainter, QShortcut
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLineEdit, QLabel, QTextEdit, QVBoxLayout, QWidget
 
 from ospilot.desktop.window import allow_fullscreen_overlay, focus_widget, order_front
@@ -64,13 +64,16 @@ class CountdownRing(QWidget):
         self.update()
 
     def paintEvent(self, event) -> None:  # noqa: N802
+        del event
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(255, 255, 255, 190))
         rect = QRectF(2.5, 2.5, self.width() - 5, self.height() - 5)
-        painter.setPen(QPen(QColor(255, 255, 255, 45), 2))
-        painter.drawEllipse(rect)
-        painter.setPen(QPen(self.accent, 2.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        painter.drawArc(rect, 90 * 16, int(-360 * self.progress * 16))
+        if self.progress >= 0.999:
+            painter.drawEllipse(rect)
+        elif self.progress > 0:
+            painter.drawPie(rect, 90 * 16, int(-360 * self.progress * 16))
 
 
 COUNTDOWN_RING_RIGHT_PADDING = 9
