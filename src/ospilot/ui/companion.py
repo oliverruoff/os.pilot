@@ -262,7 +262,14 @@ class CompanionBubble(QFrame):
         self.cancel_countdown()
         self.setMinimumHeight(72)
         self._set_mouse_passthrough(False)
-        if self.isVisible() and self.state != CompanionState.CHAT_INPUT:
+        if sys.platform == "darwin":
+            # A fullscreen Space can keep an NSWindow associated with the Space
+            # where it was first shown. Recreate the native handle for each
+            # chat open so Cmd+. attaches to the currently active Space/app.
+            if self.isVisible():
+                self.hide()
+            self._recreate_native_window()
+        elif self.isVisible() and self.state != CompanionState.CHAT_INPUT:
             # Re-show the bubble when switching from passive output/status mode
             # to input mode so platform window flags/collection behavior are
             # applied before it is ordered in again.
@@ -516,6 +523,13 @@ class CompanionBubble(QFrame):
         self.countdown_ring.set_progress(remaining / self._countdown_seconds)
         if remaining <= 0:
             self.reset()
+
+    def _recreate_native_window(self) -> None:
+        try:
+            self.destroy(True, True)
+            self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
+        except Exception:
+            pass
 
     def _show_near_cursor(self, width: int = 380, accept_keyboard: bool = False) -> None:
         macos_nonactivating_input = sys.platform == "darwin" and accept_keyboard
