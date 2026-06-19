@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import subprocess
@@ -70,6 +71,7 @@ class PiRpcClient:
         self._next_id = 1
         self._pending: dict[str, asyncio.Future[Any]] = {}
         self._reader_task: asyncio.Task[None] | None = None
+        self._stderr_task: asyncio.Task[None] | None = None
         self._handlers: list[EventHandler] = []
         self._logger = logger or logging.getLogger("ospilot.pi.rpc")
 
@@ -93,7 +95,7 @@ class PiRpcClient:
             **_subprocess_startup_kwargs(),
         )
         self._reader_task = asyncio.create_task(self._read_stdout())
-        asyncio.create_task(self._read_stderr())
+        self._stderr_task = asyncio.create_task(self._read_stderr())
         await asyncio.sleep(0)
         if self._process.returncode is not None:
             raise RuntimeError(f"pi RPC process exited with code {self._process.returncode}")
@@ -105,6 +107,8 @@ class PiRpcClient:
         self._pending.clear()
         if self._reader_task:
             self._reader_task.cancel()
+        if self._stderr_task:
+            self._stderr_task.cancel()
         if self._process and self._process.returncode is None:
             self._process.terminate()
             try:
@@ -112,7 +116,17 @@ class PiRpcClient:
             except asyncio.TimeoutError:
                 self._process.kill()
                 await self._process.wait()
+        for task in (self._reader_task, self._stderr_task):
+            if task:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+        self._reader_task = None
+        self._stderr_task = None
         self._process = None
+        if sys.platform == "win32":
+            # Give Proactor transports a loop tick to finalize pipe close callbacks
+            # before short-lived asyncio.run() callers close the event loop.
+            await asyncio.sleep(0.1)
 
     async def call(self, method: str, params: dict[str, Any] | None = None, timeout: float = 30) -> Any:
         if not self.is_running or not self._process or not self._process.stdin:

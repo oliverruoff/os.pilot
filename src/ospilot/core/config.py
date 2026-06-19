@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import shlex
+import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -59,6 +61,19 @@ def _load_env_file(path: Path) -> None:
             os.environ[key] = value
 
 
+def _default_pi_executable() -> str:
+    if sys.platform == "win32":
+        return shutil.which("pi.cmd") or shutil.which("pi") or "pi.cmd"
+    return "pi"
+
+
+def _resolve_pi_executable(value: Any) -> str:
+    executable = str(value or _default_pi_executable())
+    if sys.platform == "win32" and executable.lower() == "pi":
+        return shutil.which("pi.cmd") or shutil.which("pi") or "pi.cmd"
+    return executable
+
+
 def load_config(path: Path | None = None) -> AppConfig:
     _load_env_file(Path.cwd() / ".env")
     paths = default_paths()
@@ -76,7 +91,7 @@ def load_config(path: Path | None = None) -> AppConfig:
 
     return AppConfig(
         paths=paths,
-        pi=PiConfig(executable=str(pi_data.get("executable", "pi")), args=pi_args),
+        pi=PiConfig(executable=_resolve_pi_executable(pi_data.get("executable")), args=pi_args),
         privacy=PrivacyConfig(
             store_screenshots=bool(privacy_data.get("store_screenshots", False)),
             store_conversations=bool(privacy_data.get("store_conversations", False)),

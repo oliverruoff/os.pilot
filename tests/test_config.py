@@ -25,6 +25,17 @@ def test_pi_environment_sets_session_dir(tmp_path: Path) -> None:
     assert env["EXTRA"] == "1"
 
 
+def test_windows_default_pi_executable_prefers_pi_cmd(tmp_path: Path, monkeypatch) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("")
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setattr("shutil.which", lambda name: "C:/npm/pi.cmd" if name == "pi.cmd" else None)
+
+    config = load_config(config_file)
+
+    assert config.pi.executable == "C:/npm/pi.cmd"
+
+
 def test_windows_paths_use_appdata(tmp_path: Path, monkeypatch) -> None:
     from ospilot.core.paths import default_paths
 

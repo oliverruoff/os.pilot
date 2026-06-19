@@ -6,7 +6,7 @@ from enum import StrEnum
 
 from PySide6.QtCore import QPoint, QRect, QRectF, QSize, QTimer, Qt
 from PySide6.QtGui import QColor, QCursor, QFont, QKeySequence, QPainter, QShortcut
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLineEdit, QLabel, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QFrame, QGraphicsDropShadowEffect, QHBoxLayout, QLineEdit, QLabel, QTextEdit, QVBoxLayout, QWidget
 
 from ospilot.desktop.window import allow_fullscreen_overlay, focus_widget, order_front
 
@@ -24,6 +24,8 @@ class CompanionState(StrEnum):
 
 FONT_STACK = '"JetBrains Mono", "Cascadia Code", "SF Mono", Menlo, Consolas, monospace'
 FONT_FAMILIES = ["JetBrains Mono", "Cascadia Code", "SF Mono", "Menlo", "Consolas", "monospace"]
+TEXT_WHITE = QColor(255, 255, 255)
+TEXT_SHADOW = QColor(0, 0, 0, 185)
 
 ACCENTS = {
     CompanionState.CHAT_INPUT: (QColor(123, 165, 214), QColor(105, 126, 158)),
@@ -44,6 +46,14 @@ def _tech_font(point_size: int = 13, weight: QFont.Weight = QFont.Weight.Normal)
     font.setStyleHint(QFont.StyleHint.Monospace)
     font.setFixedPitch(True)
     return font
+
+
+def _apply_text_shadow(widget: QWidget, blur_radius: float = 1.4) -> None:
+    effect = QGraphicsDropShadowEffect(widget)
+    effect.setBlurRadius(blur_radius)
+    effect.setOffset(0, 1)
+    effect.setColor(TEXT_SHADOW)
+    widget.setGraphicsEffect(effect)
 
 
 class CountdownRing(QWidget):
@@ -87,8 +97,8 @@ class TranscriptView(QWidget):
         self._block_gap = 10
         self._line_gap = 2
         self._text_width = 320
-        self._base_color = QColor(235, 246, 255)
-        self.setFont(_tech_font(13))
+        self._base_color = QColor(TEXT_WHITE)
+        self.setFont(_tech_font(12))
         self.setSizePolicy(self.sizePolicy().horizontalPolicy(), self.sizePolicy().verticalPolicy())
 
     def set_messages(self, messages: list[tuple[str, str]]) -> None:
@@ -127,10 +137,16 @@ class TranscriptView(QWidget):
                 center = y + block_height / 2
                 progress = max(0.0, min(1.0, center / max(1, self.height())))
                 alpha = int(55 + (232 - 55) * progress)
+                rect = QRect(0, int(y), self._text_width, block_height)
+                shadow = QColor(TEXT_SHADOW)
+                shadow.setAlpha(min(210, max(70, alpha)))
+                painter.setPen(shadow)
+                formatted = self._format_block(speaker, text)
+                painter.drawText(rect.translated(0, 1), _TEXT_FLAGS, formatted)
                 color = QColor(self._base_color)
                 color.setAlpha(alpha)
                 painter.setPen(color)
-                painter.drawText(QRect(0, int(y), self._text_width, block_height), _TEXT_FLAGS, self._format_block(speaker, text))
+                painter.drawText(rect, _TEXT_FLAGS, formatted)
             y -= self._block_gap
             if y + block_height < 0:
                 break
@@ -162,19 +178,20 @@ class CompanionBubble(QFrame):
         self.setStyleSheet(
             "#companion { background: transparent; border: 0; }"
             "#outputFrame { background: transparent; border: 0; }"
-            f"QLabel {{ color: rgba(235, 246, 255, 232); font-family: {FONT_STACK}; font-size: 13px; }}"
-            f"#hintLabel {{ color: rgba(164, 184, 205, 135); font-family: {FONT_STACK}; font-size: 11px; padding-left: 2px; }}"
-            f"#outputHintLabel {{ color: rgba(172, 186, 202, 105); font-family: {FONT_STACK}; font-size: 10px; padding-top: 1px; }}"
-            f"#statusLabel {{ color: rgba(175, 214, 255, 160); font-family: {FONT_STACK}; font-size: 12px; font-weight: 600; }}"
-            f"QTextEdit {{ color: rgba(235, 246, 255, 232); background: transparent; border: none; font-family: {FONT_STACK}; font-size: 13px; padding: 0; margin: 0; }}"
+            f"QLabel {{ color: rgba(255, 255, 255, 245); font-family: {FONT_STACK}; font-size: 13px; }}"
+            f"#hintLabel {{ color: rgba(255, 255, 255, 170); font-family: {FONT_STACK}; font-size: 11px; padding-left: 2px; }}"
+            f"#outputHintLabel {{ color: rgba(255, 255, 255, 145); font-family: {FONT_STACK}; font-size: 10px; padding-top: 1px; }}"
+            f"#statusLabel {{ color: rgba(255, 255, 255, 215); font-family: {FONT_STACK}; font-size: 12px; font-weight: 600; }}"
+            f"QTextEdit {{ color: rgba(255, 255, 255, 245); background: transparent; border: none; font-family: {FONT_STACK}; font-size: 12px; padding: 0; margin: 0; }}"
             "QTextEdit::viewport { background: transparent; border: none; }"
-            f"QLineEdit {{ color: rgba(238, 249, 255, 238); background: transparent; border: none; padding: 9px 10px; font-family: {FONT_STACK}; font-size: 14px; selection-background-color: #3f6fa8; }}"
+            f"QLineEdit {{ color: rgba(255, 255, 255, 245); placeholder-text-color: rgba(255, 255, 255, 185); background: transparent; border: none; padding: 9px 10px; font-family: {FONT_STACK}; font-size: 14px; selection-background-color: #3f6fa8; }}"
         )
         self.state = CompanionState.HIDDEN
         self._accent_primary, self._accent_secondary = ACCENTS[CompanionState.OUTPUT]
         self.status_label = QLabel("")
         self.status_label.setObjectName("statusLabel")
         self.status_label.setFont(_tech_font(12, QFont.Weight.DemiBold))
+        _apply_text_shadow(self.status_label)
         self.countdown_ring = CountdownRing()
         self.countdown_ring.setParent(self)
         self.header = QWidget()
@@ -185,12 +202,14 @@ class CompanionBubble(QFrame):
         self.label = QLabel("")
         self.label.setFont(_tech_font(13))
         self.label.setWordWrap(True)
+        _apply_text_shadow(self.label)
         self.output_frame = QFrame()
         self.output_frame.setObjectName("outputFrame")
         output_layout = QVBoxLayout(self.output_frame)
         output_layout.setContentsMargins(0, 0, 0, 0)
         self.output = QTextEdit()
-        self.output.setFont(_tech_font(13))
+        self.output.setFont(_tech_font(12))
+        _apply_text_shadow(self.output)
         self.output.setReadOnly(True)
         self.output.setFrameShape(QFrame.Shape.NoFrame)
         self.output.setFrameShadow(QFrame.Shadow.Plain)
@@ -209,16 +228,19 @@ class CompanionBubble(QFrame):
         self.output_hint_label = QLabel(_output_shortcut_hint())
         self.output_hint_label.setObjectName("outputHintLabel")
         self.output_hint_label.setFont(_tech_font(10))
+        _apply_text_shadow(self.output_hint_label, 1.1)
         self.output_hint_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.output_hint_label.hide()
         self.input = QLineEdit()
         self._submit_callback = None
         self.input.returnPressed.connect(self._submit_input)
         self.input.setFont(_tech_font(14))
+        _apply_text_shadow(self.input, 1.6)
         self.input.setPlaceholderText("> ask pi...")
         self.hint_label = QLabel("Enter to send | /new for new session")
         self.hint_label.setObjectName("hintLabel")
         self.hint_label.setFont(_tech_font(11))
+        _apply_text_shadow(self.hint_label, 1.1)
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(16, 12, 16, 12)
         self.main_layout.addWidget(self.header)
@@ -290,6 +312,7 @@ class CompanionBubble(QFrame):
         self.header.hide()
         self.status_label.setText("")
         self.label.setMaximumHeight(16777215)
+        self.label.setFont(_tech_font(13))
         self._inline_final_output = False
         self._showing_transcript = False
         self.label.setText("")
@@ -326,6 +349,7 @@ class CompanionBubble(QFrame):
         self.header.hide()
         self.status_label.setText("")
         self.label.setMaximumHeight(16777215)
+        self.label.setFont(_tech_font(13))
         self.label.setText("Voice input placeholder. Type support can be wired next.")
         self.label.show()
         self._showing_transcript = False
@@ -357,6 +381,7 @@ class CompanionBubble(QFrame):
         self.header.hide()
         self.status_label.setText("")
         self.label.setMaximumHeight(16777215)
+        self.label.setFont(_tech_font(13))
         self.label.setWordWrap(True)
         if not text and tool_name:
             text = f"Running {tool_name}..."
@@ -434,6 +459,7 @@ class CompanionBubble(QFrame):
         self.header.hide()
         if self._inline_final_output:
             self.main_layout.setContentsMargins(16, 8, right_margin, 8)
+            self.label.setFont(_tech_font(12))
             self.label.setWordWrap(False)
             self.label.setText(text)
             self.label.show()
@@ -488,6 +514,7 @@ class CompanionBubble(QFrame):
         self.input.clear()
         self.output.clear()
         self.label.setMaximumHeight(16777215)
+        self.label.setFont(_tech_font(13))
         self.status_label.setText("")
         self._expanded_output = False
         self._fit_final_output = False
@@ -638,14 +665,14 @@ class CompanionBubble(QFrame):
     def _set_output_markdown(self, text: str) -> None:
         try:
             self.output.document().setDefaultStyleSheet(
-                f"body {{ color: rgba(235, 246, 255, 232); font-family: {FONT_STACK}; }} "
+                f"body {{ color: rgba(255, 255, 255, 245); font-family: {FONT_STACK}; }} "
                 "p { margin: 0 0 7px 0; } "
                 "ul, ol { margin-top: 0; margin-bottom: 7px; padding-left: 18px; } "
                 "li { margin: 0 0 3px 0; } "
-                "blockquote { color: rgba(196, 213, 232, 210); border-left: 2px solid #7ba5d6; margin: 4px 0; padding-left: 8px; } "
-                "code { color: #dcecff; background-color: rgba(126, 158, 194, 24); font-family: monospace; } "
-                "pre { color: #e4eef8; background-color: rgba(6, 11, 20, 145); border: 1px solid rgba(139, 166, 196, 42); margin: 6px 0; padding: 7px; } "
-                "a { color: #9dc2ec; text-decoration: none; } "
+                "blockquote { color: rgba(255, 255, 255, 230); border-left: 2px solid rgba(255, 255, 255, 185); margin: 4px 0; padding-left: 8px; } "
+                "code { color: #ffffff; background-color: rgba(0, 0, 0, 115); font-family: monospace; } "
+                "pre { color: #ffffff; background-color: rgba(0, 0, 0, 150); border: 1px solid rgba(255, 255, 255, 95); margin: 6px 0; padding: 7px; } "
+                "a { color: #ffffff; text-decoration: underline; } "
                 "strong { color: #ffffff; }"
             )
             self.output.setMarkdown(text)
